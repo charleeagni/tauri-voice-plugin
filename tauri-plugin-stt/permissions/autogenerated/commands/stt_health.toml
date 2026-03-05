@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-stt-health"
+description = "Enables the stt_health command without any pre-configured scope."
+commands.allow = ["stt_health"]
+
+[[permission]]
+identifier = "deny-stt-health"
+description = "Denies the stt_health command without any pre-configured scope."
+commands.deny = ["stt_health"]

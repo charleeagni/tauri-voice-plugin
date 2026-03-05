@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-bootstrap-stt"
+description = "Enables the bootstrap_stt command without any pre-configured scope."
+commands.allow = ["bootstrap_stt"]
+
+[[permission]]
+identifier = "deny-bootstrap-stt"
+description = "Denies the bootstrap_stt command without any pre-configured scope."
+commands.deny = ["bootstrap_stt"]
