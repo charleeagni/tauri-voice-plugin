@@ -1,134 +1,86 @@
-# High Level Design: Idempotent Bootstrap Manager (CODIN-235)
+# High Level Design: Minimal Bootstrap Manager (CODIN-235)
 
 ## 1. Objective
 
-Implement an idempotent bootstrap flow for the STT plugin that:
-- Creates `APP_DATA_DIR/python/.venv` using Python `3.14`.
-- Installs pinned STT dependencies from lock/constraints input.
-- Returns deterministic request/response results without transcription execution.
+Implement the smallest useful bootstrap flow for STT setup:
+- Create `APP_DATA_DIR/python/.venv` with Python `3.14`.
+- Install pinned dependencies from lock file.
+- Return a simple request/response result.
 
-This design assumes `CODIN-234` scaffold is fully implemented.
+This story does not add transcription behavior.
 
-## 2. Parent and Constraint Alignment
+## 2. Parent Alignment
 
 Parent: `CODIN-233`
 
-Inherited constraints:
-- STT-only scope.
-- Sidecar-only execution model (`uv`).
+Locked constraints used here:
+- STT only.
+- Sidecar-only execution (`uv`).
 - Local-only runtime.
-- Request/response UX (no progress stream).
-- macOS Apple Silicon target.
+- User-invoked bootstrap command.
+- Python version fixed to `3.14`.
 
-Resolved version policy for this story:
-- Python runtime is locked to `3.14`.
+## 3. Dependency Lock Location
 
-## 3. Scope
+Lock file location:
+- `tauri-plugin-stt/requirements/requirements-stt.lock.txt`
+
+This is the single dependency source for bootstrap install.
+
+## 4. Scope
 
 In scope:
-- Bootstrap command path for venv creation and dependency installation.
-- Idempotency controls for repeated bootstrap requests.
-- Safe filesystem coordination for concurrent invocations.
-- Bootstrap result contract that reports whether work was performed or skipped.
+- `bootstrap_stt` command implementation.
+- Venv creation under app data.
+- Dependency install from lock file.
+- Minimal success/failure response.
 
 Out of scope:
-- Transcription execution (`transcribe_file`).
-- Full health endpoint completion (`stt_health`).
-- Model allowlist enforcement (handled later).
-- Full typed error taxonomy finalization (handled later).
+- Fingerprint hashing.
+- Marker files.
+- Runtime dependency drift detection.
+- Transcription execution.
+- Health/reporting expansion.
 
-## 4. Requirements Interpreted for CODIN-235
+## 5. Architecture (Minimal)
 
-- Bootstrap must create and manage venv at `APP_DATA_DIR/python/.venv`.
-- Dependency install must use pinned lock/constraints source only.
-- Re-running bootstrap must not cause incorrect side effects.
-- Concurrency must not corrupt venv state.
-- Any failure must return stable and actionable error information.
+Components:
+- `bootstrap_stt` command handler.
+- `BootstrapManager` orchestration.
+- `UvSidecarRunner` for controlled `uv` commands.
 
-## 5. High-Level Architecture
+Flow:
+1. Resolve app data path.
+2. Ensure `APP_DATA_DIR/python` exists.
+3. Run `uv venv APP_DATA_DIR/python/.venv --python 3.14`.
+4. Run `uv pip install --python APP_DATA_DIR/python/.venv/bin/python -r tauri-plugin-stt/requirements/requirements-stt.lock.txt`.
+5. Return command result.
 
-Primary components:
-- Bootstrap command handler.
-- Bootstrap manager orchestration layer.
-- Sidecar runner for `uv` command execution.
-- Filesystem/state layer for lock files and install marker.
+Idempotency approach:
+- Rely on `uv venv` and `uv pip install` being safe on repeat calls.
+- No extra runtime state tracking in this phase.
 
-Control boundaries:
-- Frontend or caller can only invoke bootstrap command.
-- Bootstrap manager controls command allowlist and arguments.
-- Filesystem writes remain under `APP_DATA_DIR/python`.
+## 6. Response Contract
 
-Diagram assets:
-- `spec/Tauri Recorder/CODIN-235/diagrams/bootstrap_component_overview.png`
-- `spec/Tauri Recorder/CODIN-235/diagrams/bootstrap_sequence_idempotent.png`
-- `spec/Tauri Recorder/CODIN-235/diagrams/bootstrap_class_design.png`
+Minimal bootstrap response fields:
+- `status`: `ok | failed`
+- `details`: short message
 
-## 6. Idempotency Strategy
+No python path/version/fingerprint fields in public response.
 
-Idempotency is enforced through three mechanisms:
+## 7. Error Boundary
 
-1. Single-flight lock:
-- Acquire process lock at `APP_DATA_DIR/python/.bootstrap.lock`.
-- Prevent simultaneous bootstrap mutation.
-
-2. State fingerprint:
-- Compute dependency fingerprint from lock/constraints source content.
-- Track installed state in marker file under venv directory.
-
-3. Conditional execution:
-- If venv exists with expected Python `3.14` and fingerprint matches, skip install.
-- Otherwise execute only required missing steps and update marker atomically.
-
-## 7. Bootstrap Flow (Conceptual)
-
-1. Resolve app data paths and verify sidecar availability.
-2. Acquire bootstrap lock.
-3. Ensure `APP_DATA_DIR/python` exists.
-4. Ensure `APP_DATA_DIR/python/.venv` exists with Python `3.14`.
-5. Compare installed marker fingerprint to current lock fingerprint.
-6. Run dependency install only when mismatch or missing marker.
-7. Persist marker with Python version and fingerprint.
-8. Release lock and return bootstrap status.
-
-Returned statuses:
-- `already_ready`: no work needed.
-- `venv_created`: venv was created but dependencies already valid.
-- `dependencies_installed`: dependency installation performed.
-- `repaired`: existing state fixed and made consistent.
-
-## 8. Error Boundaries
-
-Error categories in this story:
-- Bootstrap precondition failure (missing sidecar, invalid paths).
+Error classes:
+- Sidecar missing/unavailable.
 - Venv creation failure.
-- Dependency installation failure.
-- State marker read/write failure.
-- Lock acquisition timeout/failure.
+- Dependency install failure.
+- Lock file not found/unreadable.
 
-Each error response must include:
-- Stable machine-readable code.
-- User-safe message.
-- Optional diagnostic details for logs.
+Errors return stable code + user-safe message.
 
-## 9. Security and Safety
+## 8. Validation Expectations
 
-- No shell passthrough from user input.
-- Only controlled sidecar commands are allowed.
-- Paths are normalized and constrained to app-owned directories.
-- Bootstrap does not execute arbitrary package sources outside configured lock input.
-
-## 10. Validation Expectations
-
-Minimum validation for this story:
-- First run on clean app-data creates venv and installs dependencies.
-- Second run without changes returns idempotent skip status.
-- Lock/constraints change triggers reinstall path.
-- Concurrent bootstrap calls do not race or corrupt state.
-- Partial failure leaves retry-safe state.
-
-## 11. Exit Criteria
-
-- Bootstrap manager design is clear, bounded, and idempotent.
-- Python `3.14` lock is explicit throughout.
-- Lock-based and fingerprint-based controls are documented.
-- Implementation can proceed without changing architecture assumptions from `CODIN-234`.
+- First call creates venv and installs dependencies.
+- Repeated call succeeds without requiring extra state files.
+- Missing lock file returns clear failure.
+- Command remains user-invoked, not startup-triggered.

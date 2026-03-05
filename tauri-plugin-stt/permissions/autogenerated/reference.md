@@ -18,7 +18,7 @@ Default permissions for the plugin
 <tr>
 <td>
 
-`tauri-plugin-stt:allow-bootstrap-stt`
+`stt:allow-bootstrap-stt`
 
 </td>
 <td>
@@ -31,7 +31,7 @@ Enables the bootstrap_stt command without any pre-configured scope.
 <tr>
 <td>
 
-`tauri-plugin-stt:deny-bootstrap-stt`
+`stt:deny-bootstrap-stt`
 
 </td>
 <td>
@@ -44,7 +44,7 @@ Denies the bootstrap_stt command without any pre-configured scope.
 <tr>
 <td>
 
-`tauri-plugin-stt:allow-stt-health`
+`stt:allow-stt-health`
 
 </td>
 <td>
@@ -57,7 +57,7 @@ Enables the stt_health command without any pre-configured scope.
 <tr>
 <td>
 
-`tauri-plugin-stt:deny-stt-health`
+`stt:deny-stt-health`
 
 </td>
 <td>
@@ -70,7 +70,7 @@ Denies the stt_health command without any pre-configured scope.
 <tr>
 <td>
 
-`tauri-plugin-stt:allow-transcribe-file`
+`stt:allow-transcribe-file`
 
 </td>
 <td>
@@ -83,7 +83,7 @@ Enables the transcribe_file command without any pre-configured scope.
 <tr>
 <td>
 
-`tauri-plugin-stt:deny-transcribe-file`
+`stt:deny-transcribe-file`
 
 </td>
 <td>

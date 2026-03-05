@@ -25,14 +25,14 @@ pub fn init<R: Runtime, C: DeserializeOwned>(
 pub struct TauriPluginStt<R: Runtime>(PluginHandle<R>);
 
 impl<R: Runtime> TauriPluginStt<R> {
-  pub fn bootstrap_stt(&self, payload: BootstrapRequest) -> crate::Result<BootstrapResponse> {
+  pub async fn bootstrap_stt(&self, payload: BootstrapRequest) -> crate::Result<BootstrapResponse> {
     self
       .0
       .run_mobile_plugin("bootstrap_stt", payload)
       .map_err(Into::into)
   }
 
-  pub fn transcribe_file(&self, payload: TranscribeRequest) -> crate::Result<TranscribeResponse> {
+  pub async fn transcribe_file(&self, payload: TranscribeRequest) -> crate::Result<TranscribeResponse> {
     self
       .0
       .run_mobile_plugin("transcribe_file", payload)

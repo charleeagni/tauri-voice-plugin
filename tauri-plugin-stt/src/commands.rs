@@ -9,7 +9,7 @@ pub(crate) async fn bootstrap_stt<R: Runtime>(
     app: AppHandle<R>,
     payload: BootstrapRequest,
 ) -> Result<BootstrapResponse> {
-    app.tauri_plugin_stt().bootstrap_stt(payload)
+    app.tauri_plugin_stt().bootstrap_stt(payload).await
 }
 
 #[command]
@@ -17,7 +17,7 @@ pub(crate) async fn transcribe_file<R: Runtime>(
     app: AppHandle<R>,
     payload: TranscribeRequest,
 ) -> Result<TranscribeResponse> {
-    app.tauri_plugin_stt().transcribe_file(payload)
+    app.tauri_plugin_stt().transcribe_file(payload).await
 }
 
 #[command]

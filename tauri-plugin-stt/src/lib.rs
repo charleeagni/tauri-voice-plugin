@@ -13,6 +13,8 @@ mod mobile;
 mod commands;
 mod error;
 mod models;
+mod bootstrap_manager;
+mod sidecar_uv;
 
 pub use error::{Error, Result};
 
@@ -34,7 +36,7 @@ impl<R: Runtime, T: Manager<R>> crate::TauriPluginSttExt<R> for T {
 
 /// Initializes the plugin.
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
-  Builder::new("tauri-plugin-stt")
+  Builder::new("stt")
     .invoke_handler(tauri::generate_handler![
       commands::bootstrap_stt,
       commands::transcribe_file,
