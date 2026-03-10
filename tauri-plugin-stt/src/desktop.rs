@@ -1,70 +1,237 @@
 use serde::de::DeserializeOwned;
+use std::process::Command;
+use std::path::PathBuf;
 use tauri::{plugin::PluginApi, AppHandle, Manager, Runtime};
 use tauri_plugin_shell::ShellExt;
-use std::path::PathBuf;
 
 use crate::models::*;
 
+const DEFAULT_MODEL: &str = "tiny";
+
+const ALLOWLISTED_MODELS: &[&str] = &[
+    "tiny",
+    "tiny.en",
+    "base",
+    "base.en",
+    "small",
+    "small.en",
+    "medium",
+    "medium.en",
+    "large",
+    "large-v1",
+    "large-v2",
+    "large-v3",
+    "large-v3-turbo",
+    "turbo",
+];
+
+fn model_repo_for(model_id: &str) -> String {
+    format!("mlx-community/whisper-{}", model_id)
+}
+
 pub fn init<R: Runtime, C: DeserializeOwned>(
-  app: &AppHandle<R>,
-  _api: PluginApi<R, C>,
+    app: &AppHandle<R>,
+    _api: PluginApi<R, C>,
 ) -> crate::Result<TauriPluginStt<R>> {
-  Ok(TauriPluginStt(app.clone()))
+    Ok(TauriPluginStt(
+        app.clone(),
+        std::sync::Arc::new(crate::recorder_manager::RecorderManager::new()),
+    ))
 }
 
 /// Access to the tauri-plugin-stt APIs.
-pub struct TauriPluginStt<R: Runtime>(AppHandle<R>);
+pub struct TauriPluginStt<R: Runtime>(AppHandle<R>, std::sync::Arc<crate::recorder_manager::RecorderManager>);
 
 impl<R: Runtime> TauriPluginStt<R> {
-  pub async fn bootstrap_stt(&self, payload: BootstrapRequest) -> crate::Result<BootstrapResponse> {
-    crate::bootstrap_manager::BootstrapManager::bootstrap_stt(&self.0, payload).await
-  }
-
-  pub async fn transcribe_file(&self, payload: TranscribeRequest) -> crate::Result<TranscribeResponse> {
-    // 1. Enforce readiness gate
-    let health = self.stt_health(HealthRequest {})?;
-    if let HealthResponse::NotReady { reason } = health {
-        return Err(crate::Error::NotReady(reason));
+    pub async fn bootstrap_stt(
+        &self,
+        payload: BootstrapRequest,
+    ) -> crate::Result<BootstrapResponse> {
+        crate::bootstrap_manager::BootstrapManager::bootstrap_stt(&self.0, payload).await
     }
 
-    // 2. Reject invalid paths early
-    let audio_path = PathBuf::from(&payload.path);
-    if !audio_path.exists() || !audio_path.is_file() {
-        return Err(crate::Error::InvalidInput("Audio file does not exist or is not a file".into()));
+    pub async fn transcribe_file(
+        &self,
+        payload: TranscribeRequest,
+    ) -> crate::Result<TranscribeResponse> {
+        // 1. Enforce readiness gate
+        let health = self.stt_health(HealthRequest {})?;
+        if let HealthResponse::NotReady { reason, .. } = health {
+            return Err(crate::Error::not_ready(reason));
+        }
+
+        // 2. Reject invalid paths early
+        let audio_path = PathBuf::from(&payload.path);
+        if !audio_path.exists() || !audio_path.is_file() {
+            return Err(crate::Error::invalid_input(
+                "Audio file does not exist or is not a file",
+            ));
+        }
+
+        // 3. Resolve effective model ID
+        let model_id = payload.model_id.as_deref().unwrap_or(DEFAULT_MODEL);
+
+        // 4. Validate effective model ID against allowlist
+        if !ALLOWLISTED_MODELS.contains(&model_id) {
+            return Err(crate::Error::invalid_input(
+                "Invalid or unsupported model ID",
+            ));
+        }
+
+        // 5. Execute transcription using app-local python venv + mlx_whisper.
+        let app_data_dir = self.0.path().app_data_dir().map_err(|e| {
+            crate::Error::not_ready(format!("Cannot resolve app data dir: {}", e))
+        })?;
+        let python_bin = app_data_dir.join("python").join(".venv").join("bin").join("python");
+        if !python_bin.exists() {
+            return Err(crate::Error::not_ready(format!(
+                "Python binary not found at {}",
+                python_bin.display()
+            )));
+        }
+
+        let script_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("scripts")
+            .join("transcribe.py");
+        if !script_path.exists() {
+            return Err(crate::Error::generation_failed(format!(
+                "Transcription script not found at {}",
+                script_path.display()
+            )));
+        }
+
+        let output = Command::new(&python_bin)
+            .arg(&script_path)
+            .arg("--audio")
+            .arg(audio_path.as_os_str())
+            .arg("--model")
+            .arg(model_repo_for(model_id))
+            .output()
+            .map_err(|e| {
+                crate::Error::generation_failed(format!("Failed to execute python transcriber: {e}"))
+            })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let message = if stderr.is_empty() {
+                format!("Transcriber failed with status {}", output.status)
+            } else {
+                format!("Transcriber failed: {}", stderr)
+            };
+            return Err(crate::Error::generation_failed(message));
+        }
+
+        let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if text.is_empty() {
+            return Err(crate::Error::generation_failed(
+                "Transcriber returned empty output",
+            ));
+        }
+
+        Ok(TranscribeResponse {
+            text,
+        })
     }
 
-    // 3. Execute transcription path based on command-specific runtime path
-    // Placeholder execution until real python script is introduced in subsequent tickets.
-    // Real execution would spawn python sidecar and wait for response.
-    
-    Ok(TranscribeResponse {
-      text: "Simulated transcription payload".into(),
-    })
-  }
+    pub fn stt_health(&self, _payload: HealthRequest) -> crate::Result<HealthResponse> {
+        let mut diagnostics = Vec::new();
 
-  pub fn stt_health(&self, _payload: HealthRequest) -> crate::Result<HealthResponse> {
-    let app_data_dir = match self.0.path().app_data_dir() {
-        Ok(dir) => dir,
-        Err(_) => return Ok(HealthResponse::NotReady { reason: "Cannot resolve app data dir".into() }),
-    };
-    
-    // Check venv path
-    let python_dir = app_data_dir.join("python");
-    let venv_dir = python_dir.join(".venv");
-    let python_bin = venv_dir.join("bin").join("python");
+        // 1. App Data Dir check
+        let app_data_dir = match self.0.path().app_data_dir() {
+            Ok(dir) => {
+                diagnostics.push(DiagnosticEntry {
+                    name: "app_data_dir".into(),
+                    ready: true,
+                    reason: None,
+                });
+                dir
+            }
+            Err(e) => {
+                let reason = format!("Cannot resolve app data dir: {}", e);
+                diagnostics.push(DiagnosticEntry {
+                    name: "app_data_dir".into(),
+                    ready: false,
+                    reason: Some(reason.clone()),
+                });
+                return Ok(HealthResponse::NotReady {
+                    reason,
+                    diagnostics,
+                });
+            }
+        };
 
-    if !venv_dir.exists() {
-        return Ok(HealthResponse::NotReady { reason: "Virtual environment not found".into() });
+        // 2. sidecar check
+        let sidecar_ready = self.0.shell().sidecar("uv").is_ok();
+        diagnostics.push(DiagnosticEntry {
+            name: "uv_sidecar".into(),
+            ready: sidecar_ready,
+            reason: if sidecar_ready {
+                None
+            } else {
+                Some("uv sidecar not available".into())
+            },
+        });
+
+        // 3. venv check
+        let python_dir = app_data_dir.join("python");
+        let venv_dir = python_dir.join(".venv");
+        let venv_ready = venv_dir.exists();
+        diagnostics.push(DiagnosticEntry {
+            name: "python_venv".into(),
+            ready: venv_ready,
+            reason: if venv_ready {
+                None
+            } else {
+                Some("Virtual environment not found".into())
+            },
+        });
+
+        // 4. python bin check
+        let python_bin = venv_dir.join("bin").join("python");
+        let python_bin_ready = python_bin.exists();
+        diagnostics.push(DiagnosticEntry {
+            name: "python_binary".into(),
+            ready: python_bin_ready,
+            reason: if python_bin_ready {
+                None
+            } else {
+                Some("Python binary not found".into())
+            },
+        });
+
+        // Aggregate results
+        if diagnostics.iter().all(|d| d.ready) {
+            Ok(HealthResponse::Ready { diagnostics })
+        } else {
+            let reason = diagnostics
+                .iter()
+                .find(|d| !d.ready)
+                .and_then(|d| d.reason.clone())
+                .unwrap_or_else(|| "Unknown readiness failure".into());
+
+            Ok(HealthResponse::NotReady {
+                reason,
+                diagnostics,
+            })
+        }
     }
-    if !python_bin.exists() {
-        return Ok(HealthResponse::NotReady { reason: "Python binary not found".into() });
+
+    pub async fn start_recording(
+        &self,
+        payload: StartRecordingRequest,
+    ) -> crate::Result<StartRecordingResponse> {
+        let app_data_dir = self.0.path().app_data_dir().map_err(|e| {
+            crate::Error::not_ready(format!("Cannot resolve app data dir: {}", e))
+        })?;
+        let default_dir = app_data_dir.join("recordings");
+        
+        self.1.start_recording(payload.output_dir, payload.file_name_prefix, default_dir)
     }
 
-    // Verify uv sidecar is resolvable and executable (by checking if we can spawn it or just resolve it)
-    if self.0.shell().sidecar("uv").is_err() {
-        return Ok(HealthResponse::NotReady { reason: "uv sidecar not available".into() });
+    pub async fn stop_recording(
+        &self,
+        payload: StopRecordingRequest,
+    ) -> crate::Result<StopRecordingResponse> {
+        self.1.stop_recording(payload.session_id)
     }
-
-    Ok(HealthResponse::Ready)
-  }
 }

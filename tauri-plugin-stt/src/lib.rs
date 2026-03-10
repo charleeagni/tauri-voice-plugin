@@ -7,21 +7,18 @@ pub use models::*;
 
 #[cfg(desktop)]
 mod desktop;
-#[cfg(mobile)]
-mod mobile;
 
 mod bootstrap_manager;
 mod commands;
 mod error;
 mod models;
 mod sidecar_uv;
+mod recorder_manager;
 
 pub use error::{Error, Result};
 
 #[cfg(desktop)]
 use desktop::TauriPluginStt;
-#[cfg(mobile)]
-use mobile::TauriPluginStt;
 
 /// Extensions to [`tauri::App`], [`tauri::AppHandle`] and [`tauri::Window`] to access the tauri-plugin-stt APIs.
 pub trait TauriPluginSttExt<R: Runtime> {
@@ -40,11 +37,11 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
         .invoke_handler(tauri::generate_handler![
             commands::bootstrap_stt,
             commands::transcribe_file,
-            commands::stt_health
+            commands::stt_health,
+            commands::start_recording,
+            commands::stop_recording
         ])
         .setup(|app, api| {
-            #[cfg(mobile)]
-            let tauri_plugin_stt = mobile::init(app, api)?;
             #[cfg(desktop)]
             let tauri_plugin_stt = desktop::init(app, api)?;
             app.manage(tauri_plugin_stt);

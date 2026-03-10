@@ -44,6 +44,58 @@ Denies the bootstrap_stt command without any pre-configured scope.
 <tr>
 <td>
 
+`stt:allow-start-recording`
+
+</td>
+<td>
+
+Enables the start_recording command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`stt:deny-start-recording`
+
+</td>
+<td>
+
+Denies the start_recording command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`stt:allow-stop-recording`
+
+</td>
+<td>
+
+Enables the stop_recording command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`stt:deny-stop-recording`
+
+</td>
+<td>
+
+Denies the stop_recording command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `stt:allow-stt-health`
 
 </td>

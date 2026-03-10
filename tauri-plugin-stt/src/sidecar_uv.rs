@@ -14,10 +14,10 @@ impl UvSidecarRunner {
         let (mut rx, _child) = app
             .shell()
             .sidecar("uv")
-            .map_err(|e| Error::BootstrapFailed(format!("Failed to spawn uv sidecar: {}", e)))?
+            .map_err(|e| Error::bootstrap_failed(format!("Failed to spawn uv sidecar: {}", e)))?
             .args(["venv", &venv_path_str, "--python", python_version])
             .spawn()
-            .map_err(|e| Error::BootstrapFailed(format!("Failed to execute uv venv: {}", e)))?;
+            .map_err(|e| Error::bootstrap_failed(format!("Failed to execute uv venv: {}", e)))?;
 
         let mut success = false;
         while let Some(event) = rx.recv().await {
@@ -25,13 +25,13 @@ impl UvSidecarRunner {
                 CommandEvent::Stdout(_) => {}
                 CommandEvent::Stderr(_) => {}
                 CommandEvent::Error(err) => {
-                    return Err(Error::BootstrapFailed(format!("uv venv error: {}", err)));
+                    return Err(Error::bootstrap_failed(format!("uv venv error: {}", err)));
                 }
                 CommandEvent::Terminated(payload) => {
                     if payload.code.unwrap_or(-1) == 0 {
                         success = true;
                     } else {
-                        return Err(Error::BootstrapFailed(format!("uv venv exited with code: {:?}", payload.code)));
+                        return Err(Error::bootstrap_failed(format!("uv venv exited with code: {:?}", payload.code)));
                     }
                 }
                 _ => {}
@@ -39,7 +39,7 @@ impl UvSidecarRunner {
         }
         
         if !success {
-            return Err(Error::BootstrapFailed("uv venv did not complete successfully".into()));
+            return Err(Error::bootstrap_failed("uv venv did not complete successfully"));
         }
 
         Ok(())
@@ -52,10 +52,10 @@ impl UvSidecarRunner {
         let (mut rx, _child) = app
             .shell()
             .sidecar("uv")
-            .map_err(|e| Error::DependencyInstallFailed(format!("Failed to spawn uv sidecar: {}", e)))?
+            .map_err(|e| Error::dependency_install_failed(format!("Failed to spawn uv sidecar: {}", e)))?
             .args(["pip", "install", "--python", &python_path_str, "-r", &lock_file_str])
             .spawn()
-            .map_err(|e| Error::DependencyInstallFailed(format!("Failed to execute uv pip install: {}", e)))?;
+            .map_err(|e| Error::dependency_install_failed(format!("Failed to execute uv pip install: {}", e)))?;
 
         let mut success = false;
         while let Some(event) = rx.recv().await {
@@ -63,13 +63,13 @@ impl UvSidecarRunner {
                 CommandEvent::Stdout(_) => {}
                 CommandEvent::Stderr(_) => {}
                 CommandEvent::Error(err) => {
-                    return Err(Error::DependencyInstallFailed(format!("uv pip install error: {}", err)));
+                    return Err(Error::dependency_install_failed(format!("uv pip install error: {}", err)));
                 }
                 CommandEvent::Terminated(payload) => {
                     if payload.code.unwrap_or(-1) == 0 {
                         success = true;
                     } else {
-                        return Err(Error::DependencyInstallFailed(format!("uv pip install exited with code: {:?}", payload.code)));
+                        return Err(Error::dependency_install_failed(format!("uv pip install exited with code: {:?}", payload.code)));
                     }
                 }
                 _ => {}
@@ -77,7 +77,7 @@ impl UvSidecarRunner {
         }
         
         if !success {
-            return Err(Error::DependencyInstallFailed("uv pip install did not complete successfully".into()));
+            return Err(Error::dependency_install_failed("uv pip install did not complete successfully"));
         }
 
         Ok(())

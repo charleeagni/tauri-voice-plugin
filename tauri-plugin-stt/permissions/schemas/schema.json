@@ -307,6 +307,30 @@
           "markdownDescription": "Denies the bootstrap_stt command without any pre-configured scope."
         },
         {
+          "description": "Enables the start_recording command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-start-recording",
+          "markdownDescription": "Enables the start_recording command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the start_recording command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-start-recording",
+          "markdownDescription": "Denies the start_recording command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stop_recording command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stop-recording",
+          "markdownDescription": "Enables the stop_recording command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stop_recording command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stop-recording",
+          "markdownDescription": "Denies the stop_recording command without any pre-configured scope."
+        },
+        {
           "description": "Enables the stt_health command without any pre-configured scope.",
           "type": "string",
           "const": "allow-stt-health",

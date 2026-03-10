@@ -27,3 +27,19 @@ pub(crate) async fn stt_health<R: Runtime>(
 ) -> Result<HealthResponse> {
     app.tauri_plugin_stt().stt_health(payload)
 }
+
+#[command]
+pub(crate) async fn start_recording<R: Runtime>(
+    app: AppHandle<R>,
+    payload: StartRecordingRequest,
+) -> Result<StartRecordingResponse> {
+    app.tauri_plugin_stt().start_recording(payload).await
+}
+
+#[command]
+pub(crate) async fn stop_recording<R: Runtime>(
+    app: AppHandle<R>,
+    payload: StopRecordingRequest,
+) -> Result<StopRecordingResponse> {
+    app.tauri_plugin_stt().stop_recording(payload).await
+}
