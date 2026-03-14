@@ -18,7 +18,7 @@ import {
 } from 'tauri-plugin-tauri-plugin-stt-api';
 
 // Overlay Component
-function VoiceOverlay({ mode }) {
+function VoiceOverlay({ mode, transcription }) {
   const [state, setState] = useState(null);
   const [isVisible, setIsVisible] = useState(false);
 
@@ -53,6 +53,11 @@ function VoiceOverlay({ mode }) {
           <span className="phase-text">{state.phase.toUpperCase()}</span>
         </div>
         {state.phase === 'recording' && <div className="pulse-ring"></div>}
+        {state.phase === 'transcribing' && transcription && (
+          <div className="overlay-transcription">
+            {transcription}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -94,6 +99,7 @@ function App() {
           // Update local recording state if phase changes
           if (event.payload?.state?.phase === 'recording') {
             setIsRecording(true);
+            setTranscription('');
           } else if (event.payload?.state?.phase === 'idle' || event.payload?.state?.phase === 'error') {
             setIsRecording(false);
           }
@@ -180,6 +186,7 @@ function App() {
           updateResponse(initRes);
           setIsRuntimeInitialized(true);
         }
+        setTranscription('');
         const startRes = await startRecording();
         updateResponse(startRes);
         if (startRes && startRes.sessionId) {
@@ -218,7 +225,7 @@ function App() {
 
   return (
     <main className="container">
-      <VoiceOverlay mode={overlayMode} />
+      <VoiceOverlay mode={overlayMode} transcription={transcription} />
       
       <h1>STT Plugin Debugger</h1>
 
