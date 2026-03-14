@@ -71,19 +71,9 @@ Error codes:
 - `invalid_input`
 - `generation_failed`
 
-## Guest JS Usage
-
-```ts
-import { startRecording, stopRecording } from 'tauri-plugin-tauri-plugin-stt-api'
-
-const started = await startRecording({
-  outputDir: '/absolute/output/dir',
-  fileNamePrefix: 'capture',
-})
-
-const stopped = await stopRecording(started.sessionId)
-console.log(stopped.path, stopped.durationMs)
-```
+## Recorder Ownership
+- Recording, keybinding, and overlay are out of scope for this plugin.
+- Use `/Users/karthik/merge_conflicts/tauri_recorder_plugin` for recorder features.
 
 ## Clean-Machine Bootstrap Flow
 1. Build plugin crate:

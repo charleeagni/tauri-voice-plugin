@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-capture-hotkey"
+description = "Enables the capture_hotkey command without any pre-configured scope."
+commands.allow = ["capture_hotkey"]
+
+[[permission]]
+identifier = "deny-capture-hotkey"
+description = "Denies the capture_hotkey command without any pre-configured scope."
+commands.deny = ["capture_hotkey"]

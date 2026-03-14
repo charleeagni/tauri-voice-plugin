@@ -13,7 +13,6 @@ mod commands;
 mod error;
 mod models;
 mod sidecar_uv;
-mod recorder_manager;
 
 pub use error::{Error, Result};
 
@@ -38,10 +37,24 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::bootstrap_stt,
             commands::transcribe_file,
             commands::stt_health,
+            commands::initialize_recorder_runtime,
             commands::start_recording,
-            commands::stop_recording
+            commands::stop_recording,
+            commands::set_hotkey_bindings,
+            commands::capture_hotkey,
+            commands::get_runtime_state,
+            commands::set_output_destination,
+            commands::get_output_destination,
+            commands::set_overlay_mode,
+            commands::get_overlay_mode,
         ])
         .setup(|app, api| {
+            // #[cfg(feature = "recorder-bridge")]
+            // {
+            //     // Register recorder if bridge is enabled
+            //     // app.plugin(tauri_plugin_recorder::init())?;
+            // }
+
             #[cfg(desktop)]
             let tauri_plugin_stt = desktop::init(app, api)?;
             app.manage(tauri_plugin_stt);

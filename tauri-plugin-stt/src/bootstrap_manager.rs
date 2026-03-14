@@ -1,11 +1,12 @@
 use tauri::{AppHandle, Manager, Runtime};
 use std::fs;
+use std::collections::HashMap;
 
 use crate::models::{BootstrapRequest, BootstrapResponse};
 use crate::{Error, Result};
 use crate::sidecar_uv::UvSidecarRunner;
 
-const PYTHON_VERSION: &str = "3.14";
+const PYTHON_VERSION: &str = "3.12";
 const LOCK_FILE_PATH: &str = "requirements/requirements-stt.lock.txt";
 
 pub struct BootstrapManager;
@@ -29,11 +30,27 @@ impl BootstrapManager {
             return Err(Error::not_ready(format!("Lock file missing at: {}", lock_file.display())));
         }
 
+        let cache_dir = python_dir.join("cache");
+        let tool_dir = python_dir.join("tools");
+        
+        if !cache_dir.exists() {
+            fs::create_dir_all(&cache_dir).map_err(|e| Error::bootstrap_failed(format!("Failed to create cache dir: {}", e)))?;
+        }
+        if !tool_dir.exists() {
+            fs::create_dir_all(&tool_dir).map_err(|e| Error::bootstrap_failed(format!("Failed to create tool dir: {}", e)))?;
+        }
+
+        let mut envs = HashMap::new();
+        envs.insert("UV_CACHE_DIR".to_string(), cache_dir.to_string_lossy().to_string());
+        envs.insert("UV_TOOL_DIR".to_string(), tool_dir.to_string_lossy().to_string());
+        envs.insert("UV_PYTHON_INSTALL".to_string(), "1".to_string());
+        envs.insert("UV_PYTHON_DOWNLOADS".to_string(), "auto".to_string());
+
         // 1. Create venv
-        UvSidecarRunner::create_venv(app, &venv_dir, PYTHON_VERSION).await?;
+        UvSidecarRunner::create_venv(app, &venv_dir, PYTHON_VERSION, &envs).await?;
 
         // 2. Install dependencies
-        UvSidecarRunner::pip_install(app, &python_bin, &lock_file).await?;
+        UvSidecarRunner::pip_install(app, &python_bin, &lock_file, &envs).await?;
 
         Ok(BootstrapResponse::Ready {
             details: "Bootstrap complete".into(),

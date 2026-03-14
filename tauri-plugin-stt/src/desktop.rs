@@ -1,7 +1,7 @@
 use serde::de::DeserializeOwned;
 use std::process::Command;
 use std::path::PathBuf;
-use tauri::{plugin::PluginApi, AppHandle, Manager, Runtime};
+use tauri::{plugin::PluginApi, AppHandle, Emitter, Manager, Runtime};
 use tauri_plugin_shell::ShellExt;
 
 use crate::models::*;
@@ -33,14 +33,11 @@ pub fn init<R: Runtime, C: DeserializeOwned>(
     app: &AppHandle<R>,
     _api: PluginApi<R, C>,
 ) -> crate::Result<TauriPluginStt<R>> {
-    Ok(TauriPluginStt(
-        app.clone(),
-        std::sync::Arc::new(crate::recorder_manager::RecorderManager::new()),
-    ))
+    Ok(TauriPluginStt(app.clone()))
 }
 
 /// Access to the tauri-plugin-stt APIs.
-pub struct TauriPluginStt<R: Runtime>(AppHandle<R>, std::sync::Arc<crate::recorder_manager::RecorderManager>);
+pub struct TauriPluginStt<R: Runtime>(AppHandle<R>);
 
 impl<R: Runtime> TauriPluginStt<R> {
     pub async fn bootstrap_stt(
@@ -127,6 +124,22 @@ impl<R: Runtime> TauriPluginStt<R> {
                 "Transcriber returned empty output",
             ));
         }
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+
+        // Publish overlay text payload using existing overlay pathway
+        let event = crate::models::LiveEvent {
+            contract_version: crate::models::CONTRACT_VERSION.to_string(),
+            event_id: format!("live-{}", now),
+            session_id: None,
+            seq: 0,
+            emitted_at_ms: now,
+            text: text.clone(),
+        };
+        let _ = self.0.emit("tauri-audio-plugin://live", event);
 
         Ok(TranscribeResponse {
             text,
@@ -216,22 +229,4 @@ impl<R: Runtime> TauriPluginStt<R> {
         }
     }
 
-    pub async fn start_recording(
-        &self,
-        payload: StartRecordingRequest,
-    ) -> crate::Result<StartRecordingResponse> {
-        let app_data_dir = self.0.path().app_data_dir().map_err(|e| {
-            crate::Error::not_ready(format!("Cannot resolve app data dir: {}", e))
-        })?;
-        let default_dir = app_data_dir.join("recordings");
-        
-        self.1.start_recording(payload.output_dir, payload.file_name_prefix, default_dir)
-    }
-
-    pub async fn stop_recording(
-        &self,
-        payload: StopRecordingRequest,
-    ) -> crate::Result<StopRecordingResponse> {
-        self.1.stop_recording(payload.session_id)
-    }
 }

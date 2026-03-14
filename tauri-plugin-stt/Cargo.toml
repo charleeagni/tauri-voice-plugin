@@ -5,7 +5,7 @@ authors = [ "You" ]
 description = ""
 edition = "2021"
 rust-version = "1.77.2"
-exclude = ["/examples", "/dist-js", "/guest-js", "/node_modules"]
+exclude = ["examples", "dist-js", "guest-js", "node_modules"]
 links = "tauri-plugin-stt"
 
 [dependencies]
@@ -13,6 +13,12 @@ tauri = { version = "2.10.3" }
 serde = "1.0"
 thiserror = "2"
 tauri-plugin-shell = "2.3.5"
+tauri-plugin-recorder = { path = "../../tauri_recorder_plugin/tauri-plugin-recorder", optional = true }
+serde_json = "1.0"
+
+[features]
+default = ["recorder-bridge"]
+recorder-bridge = ["dep:tauri-plugin-recorder"]
 
 [build-dependencies]
 tauri-plugin = { version = "2.5.4", features = ["build"] }

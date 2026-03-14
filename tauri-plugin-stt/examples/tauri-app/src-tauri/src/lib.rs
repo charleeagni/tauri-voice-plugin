@@ -8,7 +8,9 @@ fn greet(name: &str) -> String {
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![greet])
-        .plugin(tauri_plugin_tauri_plugin_stt::init())
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_recorder::init())
+        .plugin(tauri_plugin_stt::init())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -7,6 +7,6 @@
   ],
   "permissions": [
     "core:default",
-    "tauri-plugin-stt:default"
+    "stt:default"
   ]
 }

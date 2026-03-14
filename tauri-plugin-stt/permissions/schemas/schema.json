@@ -307,6 +307,102 @@
           "markdownDescription": "Denies the bootstrap_stt command without any pre-configured scope."
         },
         {
+          "description": "Enables the capture_hotkey command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-capture-hotkey",
+          "markdownDescription": "Enables the capture_hotkey command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the capture_hotkey command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-capture-hotkey",
+          "markdownDescription": "Denies the capture_hotkey command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_output_destination command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-output-destination",
+          "markdownDescription": "Enables the get_output_destination command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_output_destination command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-output-destination",
+          "markdownDescription": "Denies the get_output_destination command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_overlay_mode command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-overlay-mode",
+          "markdownDescription": "Enables the get_overlay_mode command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_overlay_mode command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-overlay-mode",
+          "markdownDescription": "Denies the get_overlay_mode command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_runtime_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-runtime-state",
+          "markdownDescription": "Enables the get_runtime_state command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_runtime_state command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-runtime-state",
+          "markdownDescription": "Denies the get_runtime_state command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the initialize_recorder_runtime command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-initialize-recorder-runtime",
+          "markdownDescription": "Enables the initialize_recorder_runtime command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the initialize_recorder_runtime command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-initialize-recorder-runtime",
+          "markdownDescription": "Denies the initialize_recorder_runtime command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_hotkey_bindings command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-hotkey-bindings",
+          "markdownDescription": "Enables the set_hotkey_bindings command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_hotkey_bindings command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-hotkey-bindings",
+          "markdownDescription": "Denies the set_hotkey_bindings command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_output_destination command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-output-destination",
+          "markdownDescription": "Enables the set_output_destination command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_output_destination command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-output-destination",
+          "markdownDescription": "Denies the set_output_destination command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_overlay_mode command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-overlay-mode",
+          "markdownDescription": "Enables the set_overlay_mode command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_overlay_mode command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-overlay-mode",
+          "markdownDescription": "Denies the set_overlay_mode command without any pre-configured scope."
+        },
+        {
           "description": "Enables the start_recording command without any pre-configured scope.",
           "type": "string",
           "const": "allow-start-recording",
@@ -355,10 +451,10 @@
           "markdownDescription": "Denies the transcribe_file command without any pre-configured scope."
         },
         {
-          "description": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-ping`",
+          "description": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-bootstrap-stt`\n- `allow-transcribe-file`\n- `allow-stt-health`\n- `allow-initialize-recorder-runtime`\n- `allow-start-recording`\n- `allow-stop-recording`\n- `allow-set-hotkey-bindings`\n- `allow-capture-hotkey`\n- `allow-get-runtime-state`\n- `allow-set-output-destination`\n- `allow-get-output-destination`\n- `allow-set-overlay-mode`\n- `allow-get-overlay-mode`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-ping`"
+          "markdownDescription": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-bootstrap-stt`\n- `allow-transcribe-file`\n- `allow-stt-health`\n- `allow-initialize-recorder-runtime`\n- `allow-start-recording`\n- `allow-stop-recording`\n- `allow-set-hotkey-bindings`\n- `allow-capture-hotkey`\n- `allow-get-runtime-state`\n- `allow-set-output-destination`\n- `allow-get-output-destination`\n- `allow-set-overlay-mode`\n- `allow-get-overlay-mode`"
         }
       ]
     }

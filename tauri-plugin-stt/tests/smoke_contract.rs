@@ -75,3 +75,46 @@ fn error_serialization_uses_stable_generation_failed_code() {
 fn serialize_error(err: Error) -> Value {
     serde_json::to_value(err).expect("error should serialize")
 }
+
+#[test]
+fn error_serialization_uses_feature_disabled_code() {
+    let value = serialize_error(Error::feature_disabled("Bridge is disabled"));
+
+    assert_eq!(value["code"], "feature_disabled");
+    assert_eq!(value["message"], "Bridge is disabled");
+    assert!(value["details"].is_null());
+}
+
+#[test]
+fn recorder_bridge_shapes_serialize() {
+    use tauri_plugin_stt::{RuntimeState, Phase, PermissionState, GetRuntimeStateResponse, Readiness, AggregateStatus};
+
+    let state = RuntimeState {
+        phase: Phase::Recording,
+        mic_permission: PermissionState::Granted,
+    };
+
+    let readiness = Readiness {
+        aggregate_status: AggregateStatus::Ready,
+        recording_ready: true,
+        shortcut_ready: true,
+        checks: vec![],
+        issues: vec![],
+    };
+
+    let response = GetRuntimeStateResponse {
+        contract_version: "0.1.0".to_string(),
+        state,
+        readiness,
+    };
+
+    let value = serde_json::to_value(response).expect("GetRuntimeStateResponse should serialize");
+    
+    // Testing casing translations
+    assert_eq!(value["contractVersion"], "0.1.0");
+    assert_eq!(value["state"]["phase"], "recording");
+    assert_eq!(value["state"]["micPermission"], "granted");
+    assert_eq!(value["readiness"]["aggregateStatus"], "ready");
+    assert_eq!(value["readiness"]["recordingReady"], true);
+    assert_eq!(value["readiness"]["shortcutReady"], true);
+}

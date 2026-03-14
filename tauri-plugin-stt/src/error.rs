@@ -30,26 +30,6 @@ pub enum Error {
         message: String,
         details: Option<String>,
     },
-    #[error("Recording in progress: {message}")]
-    RecordingInProgress {
-        message: String,
-        details: Option<String>,
-    },
-    #[error("Recording not active: {message}")]
-    RecordingNotActive {
-        message: String,
-        details: Option<String>,
-    },
-    #[error("Recording start failed: {message}")]
-    RecordingStartFailed {
-        message: String,
-        details: Option<String>,
-    },
-    #[error("Recording stop failed: {message}")]
-    RecordingStopFailed {
-        message: String,
-        details: Option<String>,
-    },
     #[error("Invalid input: {message}")]
     InvalidInput {
         message: String,
@@ -57,6 +37,11 @@ pub enum Error {
     },
     #[error("Not ready: {message}")]
     NotReady {
+        message: String,
+        details: Option<String>,
+    },
+    #[error("Feature disabled: {message}")]
+    FeatureDisabled {
         message: String,
         details: Option<String>,
     },
@@ -99,26 +84,8 @@ impl Error {
             details: None,
         }
     }
-    pub fn recording_in_progress(msg: impl Into<String>) -> Self {
-        Self::RecordingInProgress {
-            message: msg.into(),
-            details: None,
-        }
-    }
-    pub fn recording_not_active(msg: impl Into<String>) -> Self {
-        Self::RecordingNotActive {
-            message: msg.into(),
-            details: None,
-        }
-    }
-    pub fn recording_start_failed(msg: impl Into<String>) -> Self {
-        Self::RecordingStartFailed {
-            message: msg.into(),
-            details: None,
-        }
-    }
-    pub fn recording_stop_failed(msg: impl Into<String>) -> Self {
-        Self::RecordingStopFailed {
+    pub fn feature_disabled(msg: impl Into<String>) -> Self {
+        Self::FeatureDisabled {
             message: msg.into(),
             details: None,
         }
@@ -163,26 +130,6 @@ impl Serialize for Error {
                 state.serialize_field("message", message)?;
                 state.serialize_field("details", details)?;
             }
-            Error::RecordingInProgress { message, details } => {
-                state.serialize_field("code", "recording_in_progress")?;
-                state.serialize_field("message", message)?;
-                state.serialize_field("details", details)?;
-            }
-            Error::RecordingNotActive { message, details } => {
-                state.serialize_field("code", "recording_not_active")?;
-                state.serialize_field("message", message)?;
-                state.serialize_field("details", details)?;
-            }
-            Error::RecordingStartFailed { message, details } => {
-                state.serialize_field("code", "recording_start_failed")?;
-                state.serialize_field("message", message)?;
-                state.serialize_field("details", details)?;
-            }
-            Error::RecordingStopFailed { message, details } => {
-                state.serialize_field("code", "recording_stop_failed")?;
-                state.serialize_field("message", message)?;
-                state.serialize_field("details", details)?;
-            }
             Error::InvalidInput { message, details } => {
                 state.serialize_field("code", "invalid_input")?;
                 state.serialize_field("message", message)?;
@@ -190,6 +137,11 @@ impl Serialize for Error {
             }
             Error::NotReady { message, details } => {
                 state.serialize_field("code", "not_ready")?;
+                state.serialize_field("message", message)?;
+                state.serialize_field("details", details)?;
+            }
+            Error::FeatureDisabled { message, details } => {
+                state.serialize_field("code", "feature_disabled")?;
                 state.serialize_field("message", message)?;
                 state.serialize_field("details", details)?;
             }
