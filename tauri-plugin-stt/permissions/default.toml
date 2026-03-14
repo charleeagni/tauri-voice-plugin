@@ -4,6 +4,7 @@ permissions = [
     "allow-bootstrap-stt",
     "allow-transcribe-file",
     "allow-stt-health",
+    "allow-setup-record-transcribe-pipeline",
     "allow-initialize-recorder-runtime",
     "allow-start-recording",
     "allow-stop-recording",

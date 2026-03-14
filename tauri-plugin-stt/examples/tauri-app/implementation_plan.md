@@ -69,7 +69,18 @@ All four actions (`checkHealth`, `bootstrap`, `checkState`, `clearLogs`) and the
 > [!NOTE]
 > The component CSS currently lives inside `App.svelte`'s `<style>` block (scoped). Moving to React, these styles will be added to `style.css` as global rules — the selectors (`.container`, `.actions`, `button`, `.debug-console`, etc.) are specific enough that there is no real risk of collision in this single-component app.
 
----
+## Proposed Changes
+
+### [New] Backend Logging
+- Add `println!` statements to `src/bootstrap_manager.rs` to trace directory creation and venv setup.
+- Add logging to `src/sidecar_uv.rs` to output `uv` stdout/stderr to the terminal during bootstrap.
+
+### [New] Frontend Feedback
+- Update `App.jsx` to log the result of `bootstrapStt`.
+
+### [New] Build & Reinstall
+- Run `rollup -c` in the root directory to update the JS distribution.
+- Run `bun install` in `examples/tauri-app` to refresh the linked dependency.
 
 ## Verification Plan
 

@@ -2,6 +2,7 @@ const COMMANDS: &[&str] = &[
     "bootstrap_stt",
     "transcribe_file",
     "stt_health",
+    "setup_record_transcribe_pipeline",
     "initialize_recorder_runtime",
     "start_recording",
     "stop_recording",

@@ -39,6 +39,15 @@ pub(crate) async fn stt_health<R: Runtime>(
     app.tauri_plugin_stt().stt_health(payload)
 }
 
+#[command]
+pub(crate) async fn setup_record_transcribe_pipeline<R: Runtime>(
+    app: AppHandle<R>,
+    payload: SetupRecordTranscribePipelineRequest,
+) -> Result<SetupRecordTranscribePipelineResponse> {
+    app.tauri_plugin_stt()
+        .setup_record_transcribe_pipeline(payload)
+}
+
 // -----------------------------------------------------------------------------
 // Recorder Bridge Commands
 // -----------------------------------------------------------------------------

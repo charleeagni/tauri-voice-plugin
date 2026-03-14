@@ -13,6 +13,7 @@ import {
   setOverlayMode,
   getOverlayMode,
   subscribeOverlayState,
+  setupRecordTranscribePipeline,
   CHANNELS
 } from 'tauri-plugin-tauri-plugin-stt-api';
 
@@ -66,6 +67,7 @@ function App() {
   const [transcription, setTranscription] = useState('');
   const [isRuntimeInitialized, setIsRuntimeInitialized] = useState(false);
   const [overlayMode, setOverlayModeState] = useState('consumer');
+  const [pipelineActive, setPipelineActive] = useState(false);
 
   const updateResponse = (val) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -97,17 +99,39 @@ function App() {
           }
         });
 
+        const unlistenLive = await listen(CHANNELS.LIVE, (event) => {
+          console.log("Received LIVE event", event);
+          updateResponse({
+            channel: 'LIVE',
+            payload: event.payload
+          });
+          if (event.payload?.text) {
+            setTranscription(event.payload.text);
+          }
+        });
+
+        const unlistenError = await listen(CHANNELS.ERROR, (event) => {
+          console.log("Received ERROR event", event);
+          updateResponse({
+            channel: 'ERROR',
+            payload: event.payload
+          });
+        });
+
         // Get initial overlay mode
         const modeRes = await getOverlayMode();
         setOverlayModeState(modeRes.overlayMode);
+
+        return () => {
+          if (unlisten) unlisten();
+          if (unlistenLive) unlistenLive();
+          if (unlistenError) unlistenError();
+        };
       } catch (err) {
-        updateResponse({ error: 'Failed to listen to STATE channel', detail: err });
+        updateResponse({ error: 'Failed to listen to channels', detail: err });
       }
     };
     setupListener();
-    return () => {
-      if (unlisten) unlisten();
-    };
   }, []);
 
   const handleCaptureHotkey = async () => {
@@ -121,6 +145,19 @@ function App() {
         updateResponse("Binding hotkey to toggle action...");
         const bindResult = await setHotkeyBindings({ toggle: result.shortcut }, {});
         updateResponse({ action: 'setHotkeyBindings', result: bindResult });
+      }
+    } catch (err) {
+      updateResponse(err);
+    }
+  };
+
+  const handleSetupPipeline = async () => {
+    try {
+      updateResponse('Setting up record→transcribe pipeline...');
+      const result = await setupRecordTranscribePipeline({ toggleShortcut: hotkey });
+      updateResponse(result);
+      if (result && result.active) {
+        setPipelineActive(true);
       }
     } catch (err) {
       updateResponse(err);
@@ -189,6 +226,16 @@ function App() {
         <h2>Section 1 — Hotkey Registration</h2>
         <button onClick={handleCaptureHotkey}>Capture Hotkey</button>
         {hotkey && <p>Registered Hotkey: <code>{hotkey}</code></p>}
+        {hotkey && (
+          <button onClick={handleSetupPipeline} disabled={pipelineActive}>
+            {pipelineActive ? 'Pipeline Active' : 'Setup Record→Transcribe Pipeline'}
+          </button>
+        )}
+        {pipelineActive && (
+          <p style={{ fontSize: '0.8rem', color: '#4a9' }}>
+            Pipeline is active. Use <code>{hotkey}</code> to toggle record and auto-transcribe.
+          </p>
+        )}
         <p style={{ fontSize: '0.8rem', color: '#666' }}>
           Once captured, the hotkey is bound to the toggle recording action.
         </p>
@@ -260,7 +307,10 @@ function App() {
 
       <div className="actions" style={{ marginTop: '20px' }}>
         <button onClick={() => sttHealth().then(updateResponse)}>Check Health</button>
-        <button onClick={() => bootstrapStt().then(updateResponse)}>Bootstrap STT</button>
+        <button onClick={() => {
+          updateResponse("Starting STT Bootstrap...");
+          bootstrapStt().then(updateResponse).catch(updateResponse);
+        }}>Bootstrap STT</button>
         <button onClick={() => getRuntimeState().then(updateResponse)}>Get Runtime State</button>
         <button className="clear" onClick={clearLogs}>Clear Logs</button>
       </div>

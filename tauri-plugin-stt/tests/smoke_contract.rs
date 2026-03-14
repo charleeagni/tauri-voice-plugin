@@ -1,6 +1,7 @@
 use serde_json::Value;
 use tauri_plugin_stt::{
-    BootstrapResponse, DiagnosticEntry, Error, HealthResponse, TranscribeRequest,
+    BootstrapResponse, DiagnosticEntry, Error, HealthResponse,
+    SetupRecordTranscribePipelineRequest, SetupRecordTranscribePipelineResponse, TranscribeRequest,
 };
 
 #[test]
@@ -117,4 +118,31 @@ fn recorder_bridge_shapes_serialize() {
     assert_eq!(value["readiness"]["aggregateStatus"], "ready");
     assert_eq!(value["readiness"]["recordingReady"], true);
     assert_eq!(value["readiness"]["shortcutReady"], true);
+}
+
+#[test]
+fn setup_pipeline_request_serializes_camel_case_fields() {
+    let payload = SetupRecordTranscribePipelineRequest {
+        toggle_shortcut: "Command+Shift+R".to_string(),
+        recorder_config: None,
+        model_id: Some("tiny".to_string()),
+        show_final_transcript: Some(true),
+    };
+    let value = serde_json::to_value(payload).expect("setup request should serialize");
+
+    assert_eq!(value["toggleShortcut"], "Command+Shift+R");
+    assert_eq!(value["modelId"], "tiny");
+    assert_eq!(value["showFinalTranscript"], true);
+}
+
+#[test]
+fn setup_pipeline_response_serializes_active_contract() {
+    let payload = SetupRecordTranscribePipelineResponse {
+        contract_version: "0.1.0".to_string(),
+        active: true,
+    };
+    let value = serde_json::to_value(payload).expect("setup response should serialize");
+
+    assert_eq!(value["contractVersion"], "0.1.0");
+    assert_eq!(value["active"], true);
 }

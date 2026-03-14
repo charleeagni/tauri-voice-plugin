@@ -24,6 +24,18 @@ export interface TranscribeResponse {
   text: string;
 }
 
+export interface SetupRecordTranscribePipelineRequest {
+  toggleShortcut: string;
+  recorderConfig?: RecorderConfig;
+  modelId?: string;
+  showFinalTranscript?: boolean;
+}
+
+export interface SetupRecordTranscribePipelineResponse {
+  contractVersion: string;
+  active: boolean;
+}
+
 export interface HealthRequest {}
 export interface DiagnosticEntry {
   name: string;
@@ -204,6 +216,18 @@ export async function sttHealth(
   payload: HealthRequest = {},
 ): Promise<HealthResponse> {
   return await invoke("plugin:stt|stt_health", { payload });
+}
+
+/**
+ * Sets up a one-time hotkey-driven record->transcribe pipeline.
+ *
+ * :param payload: Pipeline setup configuration.
+ * :return: Active pipeline status.
+ */
+export async function setupRecordTranscribePipeline(
+  payload: SetupRecordTranscribePipelineRequest,
+): Promise<SetupRecordTranscribePipelineResponse> {
+  return await invoke("plugin:stt|setup_record_transcribe_pipeline", { payload });
 }
 
 // -------------------------

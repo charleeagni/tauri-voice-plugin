@@ -53,6 +53,19 @@ Response:
 Error codes:
 - `not_ready` (for command-level precondition failures)
 
+### `setup_record_transcribe_pipeline(payload)`
+Registers a single hotkey-driven record-to-transcribe pipeline coordinated in Rust.
+
+Request:
+- `{"toggleShortcut":"Command+Shift+R","recorderConfig":{"outputDir":null,"fileNamePrefix":null},"modelId":"tiny","showFinalTranscript":true}`
+
+Response:
+- `{"contractVersion":"0.1.0","active":true}`
+
+Behavior:
+- First call wins for process lifetime.
+- Repeated setup calls return `invalid_input`.
+
 ### `transcribe_file(payload)`
 Validates readiness, validates file path, validates model allowlist, then runs transcription.
 

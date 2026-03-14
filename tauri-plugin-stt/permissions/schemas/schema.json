@@ -403,6 +403,18 @@
           "markdownDescription": "Denies the set_overlay_mode command without any pre-configured scope."
         },
         {
+          "description": "Enables the setup_record_transcribe_pipeline command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-setup-record-transcribe-pipeline",
+          "markdownDescription": "Enables the setup_record_transcribe_pipeline command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the setup_record_transcribe_pipeline command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-setup-record-transcribe-pipeline",
+          "markdownDescription": "Denies the setup_record_transcribe_pipeline command without any pre-configured scope."
+        },
+        {
           "description": "Enables the start_recording command without any pre-configured scope.",
           "type": "string",
           "const": "allow-start-recording",
@@ -451,10 +463,10 @@
           "markdownDescription": "Denies the transcribe_file command without any pre-configured scope."
         },
         {
-          "description": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-bootstrap-stt`\n- `allow-transcribe-file`\n- `allow-stt-health`\n- `allow-initialize-recorder-runtime`\n- `allow-start-recording`\n- `allow-stop-recording`\n- `allow-set-hotkey-bindings`\n- `allow-capture-hotkey`\n- `allow-get-runtime-state`\n- `allow-set-output-destination`\n- `allow-get-output-destination`\n- `allow-set-overlay-mode`\n- `allow-get-overlay-mode`",
+          "description": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-bootstrap-stt`\n- `allow-transcribe-file`\n- `allow-stt-health`\n- `allow-setup-record-transcribe-pipeline`\n- `allow-initialize-recorder-runtime`\n- `allow-start-recording`\n- `allow-stop-recording`\n- `allow-set-hotkey-bindings`\n- `allow-capture-hotkey`\n- `allow-get-runtime-state`\n- `allow-set-output-destination`\n- `allow-get-output-destination`\n- `allow-set-overlay-mode`\n- `allow-get-overlay-mode`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-bootstrap-stt`\n- `allow-transcribe-file`\n- `allow-stt-health`\n- `allow-initialize-recorder-runtime`\n- `allow-start-recording`\n- `allow-stop-recording`\n- `allow-set-hotkey-bindings`\n- `allow-capture-hotkey`\n- `allow-get-runtime-state`\n- `allow-set-output-destination`\n- `allow-get-output-destination`\n- `allow-set-overlay-mode`\n- `allow-get-overlay-mode`"
+          "markdownDescription": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-bootstrap-stt`\n- `allow-transcribe-file`\n- `allow-stt-health`\n- `allow-setup-record-transcribe-pipeline`\n- `allow-initialize-recorder-runtime`\n- `allow-start-recording`\n- `allow-stop-recording`\n- `allow-set-hotkey-bindings`\n- `allow-capture-hotkey`\n- `allow-get-runtime-state`\n- `allow-set-output-destination`\n- `allow-get-output-destination`\n- `allow-set-overlay-mode`\n- `allow-get-overlay-mode`"
         }
       ]
     }

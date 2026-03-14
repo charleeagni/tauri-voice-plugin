@@ -7,6 +7,7 @@ Default permissions for the plugin
 - `allow-bootstrap-stt`
 - `allow-transcribe-file`
 - `allow-stt-health`
+- `allow-setup-record-transcribe-pipeline`
 - `allow-initialize-recorder-runtime`
 - `allow-start-recording`
 - `allow-stop-recording`
@@ -257,6 +258,32 @@ Enables the set_overlay_mode command without any pre-configured scope.
 <td>
 
 Denies the set_overlay_mode command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`stt:allow-setup-record-transcribe-pipeline`
+
+</td>
+<td>
+
+Enables the setup_record_transcribe_pipeline command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`stt:deny-setup-record-transcribe-pipeline`
+
+</td>
+<td>
+
+Denies the setup_record_transcribe_pipeline command without any pre-configured scope.
 
 </td>
 </tr>

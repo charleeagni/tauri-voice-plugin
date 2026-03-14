@@ -37,6 +37,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::bootstrap_stt,
             commands::transcribe_file,
             commands::stt_health,
+            commands::setup_record_transcribe_pipeline,
             commands::initialize_recorder_runtime,
             commands::start_recording,
             commands::stop_recording,

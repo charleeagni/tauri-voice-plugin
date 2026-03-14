@@ -30,9 +30,13 @@ impl UvSidecarRunner {
         let mut success = false;
         while let Some(event) = rx.recv().await {
             match event {
-                CommandEvent::Stdout(_) => {}
+                CommandEvent::Stdout(line) => {
+                    println!("[uv venv] {}", String::from_utf8_lossy(&line));
+                }
                 CommandEvent::Stderr(line) => {
-                    stderr_lines.push(String::from_utf8_lossy(&line).into_owned());
+                    let s = String::from_utf8_lossy(&line).into_owned();
+                    eprintln!("[uv venv error] {}", s);
+                    stderr_lines.push(s);
                 }
                 CommandEvent::Error(err) => {
                     return Err(Error::bootstrap_failed(format!("uv venv error: {}\nStderr: {}", err, stderr_lines.join("\n"))));
@@ -77,9 +81,13 @@ impl UvSidecarRunner {
         let mut success = false;
         while let Some(event) = rx.recv().await {
             match event {
-                CommandEvent::Stdout(_) => {}
+                CommandEvent::Stdout(line) => {
+                    println!("[uv pip] {}", String::from_utf8_lossy(&line));
+                }
                 CommandEvent::Stderr(line) => {
-                    stderr_lines.push(String::from_utf8_lossy(&line).into_owned());
+                    let s = String::from_utf8_lossy(&line).into_owned();
+                    eprintln!("[uv pip error] {}", s);
+                    stderr_lines.push(s);
                 }
                 CommandEvent::Error(err) => {
                     return Err(Error::dependency_install_failed(format!("uv pip install error: {}\nStderr: {}", err, stderr_lines.join("\n"))));

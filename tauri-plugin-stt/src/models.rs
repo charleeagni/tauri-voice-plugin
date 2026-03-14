@@ -24,6 +24,22 @@ pub struct TranscribeResponse {
     pub text: String,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetupRecordTranscribePipelineRequest {
+    pub toggle_shortcut: String,
+    pub recorder_config: Option<RecorderConfig>,
+    pub model_id: Option<String>,
+    pub show_final_transcript: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetupRecordTranscribePipelineResponse {
+    pub contract_version: String,
+    pub active: bool,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HealthRequest {}
@@ -291,7 +307,7 @@ pub struct OverlayModeResponse {
 }
 
 // Events schema
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StateEvent {
     pub contract_version: String,
@@ -312,7 +328,7 @@ pub struct LiveEvent {
     pub text: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ErrorEvent {
     pub contract_version: String,
@@ -321,7 +337,7 @@ pub struct ErrorEvent {
     pub error: serde_json::Value,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompleteEvent {
     pub contract_version: String,

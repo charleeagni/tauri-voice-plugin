@@ -17,6 +17,7 @@ impl BootstrapManager {
         let python_dir = app_data_dir.join("python");
         
         if !python_dir.exists() {
+            println!("Creating python directory at: {:?}", python_dir);
             fs::create_dir_all(&python_dir).map_err(|e| Error::bootstrap_failed(format!("Failed to create python dir: {}", e)))?;
         }
 
@@ -34,9 +35,11 @@ impl BootstrapManager {
         let tool_dir = python_dir.join("tools");
         
         if !cache_dir.exists() {
+            println!("Creating cache directory at: {:?}", cache_dir);
             fs::create_dir_all(&cache_dir).map_err(|e| Error::bootstrap_failed(format!("Failed to create cache dir: {}", e)))?;
         }
         if !tool_dir.exists() {
+            println!("Creating tools directory at: {:?}", tool_dir);
             fs::create_dir_all(&tool_dir).map_err(|e| Error::bootstrap_failed(format!("Failed to create tool dir: {}", e)))?;
         }
 
@@ -47,9 +50,11 @@ impl BootstrapManager {
         envs.insert("UV_PYTHON_DOWNLOADS".to_string(), "auto".to_string());
 
         // 1. Create venv
+        println!("Creating python venv (version {})...", PYTHON_VERSION);
         UvSidecarRunner::create_venv(app, &venv_dir, PYTHON_VERSION, &envs).await?;
 
         // 2. Install dependencies
+        println!("Installing dependencies from lockfile: {:?}", lock_file);
         UvSidecarRunner::pip_install(app, &python_bin, &lock_file, &envs).await?;
 
         Ok(BootstrapResponse::Ready {
