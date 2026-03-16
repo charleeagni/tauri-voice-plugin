@@ -259,8 +259,6 @@ function App() {
 
   return (
     <main className="container">
-      <VoiceOverlay mode={overlayMode} transcription={transcription} />
-      
       <h1>STT Plugin Debugger</h1>
 
       <div className="section">

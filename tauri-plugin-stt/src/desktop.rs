@@ -648,7 +648,7 @@ async fn process_complete_event<R: Runtime>(
     worker: Arc<Mutex<Option<SttWorker>>>,
     payload: String,
 ) {
-    use tauri_plugin_recorder::RecorderExt;
+
 
     let complete_event: CompleteEvent = match serde_json::from_str(&payload) {
         Ok(event) => event,
@@ -723,8 +723,6 @@ async fn process_complete_event<R: Runtime>(
             emit_state_transition(&app, Phase::Idle);
         }
     }
-
-    let _ = app.recorder().set_overlay_mode(tauri_plugin_recorder::OverlayMode::Default);
 }
 
 #[cfg(feature = "recorder-bridge")]
