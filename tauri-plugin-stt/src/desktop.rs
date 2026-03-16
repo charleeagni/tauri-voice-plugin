@@ -102,8 +102,6 @@ impl<R: Runtime> TauriPluginStt<R> {
             .clone()
             .unwrap_or_else(|| DEFAULT_MODEL.to_string());
 
-        println!("[stt] Starting auto_bootstrap with model: {}", model_id);
-
         // 1. Perform venv and dependency setup (sync block on async runtime).
         let bootstrap_result = tauri::async_runtime::block_on(async {
             crate::bootstrap_manager::BootstrapManager::bootstrap_stt(&self.app, BootstrapRequest {})
@@ -120,12 +118,11 @@ impl<R: Runtime> TauriPluginStt<R> {
         // 2. Load model into memory by spawning the worker.
         match self.spawn_worker(&model_id) {
             Ok(worker) => {
-                println!("[stt] auto_bootstrap: worker spawned successfully");
                 *self.worker.lock().unwrap() = Some(worker);
             }
             Err(e) => {
                 let error_msg = format!("Startup model load failed for {model_id}: {e}");
-                eprintln!("[stt] auto_bootstrap: {}", error_msg);
+                eprintln!("{error_msg}");
                 *self.startup_error.lock().unwrap() = Some(error_msg);
             }
         }
@@ -636,9 +633,6 @@ impl<R: Runtime> TauriPluginStt<R> {
         } else {
             LifecycleState::Uninitialized
         };
-
-        println!("[stt] stt_health: worker_ready={}, is_downloading={}, lifecycle_state={:?}", 
-            worker_ready, is_downloading, lifecycle_state);
 
         // Aggregate results.
         if diagnostics.iter().all(|d| d.ready) {
