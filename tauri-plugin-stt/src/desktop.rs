@@ -1,10 +1,9 @@
-use serde::de::DeserializeOwned;
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
-use tauri::{plugin::PluginApi, AppHandle, Emitter, Listener, Manager, Runtime};
+use tauri::{AppHandle, Emitter, Listener, Manager, Runtime};
 use tauri_plugin_shell::ShellExt;
 
 use crate::models::*;
@@ -43,15 +42,15 @@ fn model_repo_for(model_id: &str) -> String {
     }
 }
 
-pub fn init<R: Runtime, C: DeserializeOwned>(
+pub fn init<R: Runtime>(
     app: &AppHandle<R>,
-    _api: PluginApi<R, C>,
 ) -> crate::Result<TauriPluginStt<R>> {
     Ok(TauriPluginStt {
         app: app.clone(),
         pipeline_state: Arc::new(Mutex::new(PipelineRuntimeState::default())),
         worker: Arc::new(Mutex::new(None)),
         download_in_progress: Arc::new(Mutex::new(false)),
+        startup_error: Arc::new(Mutex::new(None)),
     })
 }
 
@@ -65,6 +64,9 @@ pub struct TauriPluginStt<R: Runtime> {
 
     // Guards concurrent download_model / bootstrap_stt calls.
     download_in_progress: Arc<Mutex<bool>>,
+
+    // Captured startup model load error for health visibility.
+    startup_error: Arc<Mutex<Option<String>>>,
 }
 
 /// Persistent Python worker process for model-loaded transcription.
@@ -94,6 +96,38 @@ struct PipelineRuntimeState {
 }
 
 impl<R: Runtime> TauriPluginStt<R> {
+    pub fn auto_bootstrap(&self, config: &Config) {
+        let model_id = config
+            .model_id
+            .clone()
+            .unwrap_or_else(|| DEFAULT_MODEL.to_string());
+
+        // 1. Perform venv and dependency setup (sync block on async runtime).
+        let bootstrap_result = tauri::async_runtime::block_on(async {
+            crate::bootstrap_manager::BootstrapManager::bootstrap_stt(&self.app, BootstrapRequest {})
+                .await
+        });
+
+        if let Err(e) = bootstrap_result {
+            let error_msg = format!("Startup bootstrap failed: {e}");
+            eprintln!("{error_msg}");
+            *self.startup_error.lock().unwrap() = Some(error_msg);
+            return;
+        }
+
+        // 2. Load model into memory by spawning the worker.
+        match self.spawn_worker(&model_id) {
+            Ok(worker) => {
+                *self.worker.lock().unwrap() = Some(worker);
+            }
+            Err(e) => {
+                let error_msg = format!("Startup model load failed for {model_id}: {e}");
+                eprintln!("{error_msg}");
+                *self.startup_error.lock().unwrap() = Some(error_msg);
+            }
+        }
+    }
+
     pub async fn bootstrap_stt(
         &self,
         payload: BootstrapRequest,
@@ -498,6 +532,19 @@ impl<R: Runtime> TauriPluginStt<R> {
     pub fn stt_health(&self, _payload: HealthRequest) -> crate::Result<HealthResponse> {
         let mut diagnostics = Vec::new();
 
+        // 0. Explicit startup failure check
+        if let Some(error) = self.startup_error.lock().unwrap().clone() {
+            diagnostics.push(DiagnosticEntry {
+                name: "startup_model_load".into(),
+                ready: false,
+                reason: Some(error.clone()),
+            });
+            return Ok(HealthResponse::NotReady {
+                reason: error,
+                diagnostics,
+            });
+        }
+
         // 1. App Data Dir check
         let app_data_dir = match self.app.path().app_data_dir() {
             Ok(dir) => {
@@ -623,6 +670,7 @@ async fn process_complete_event<R: Runtime>(
         pipeline_state,
         worker,
         download_in_progress: Arc::new(Mutex::new(false)),
+        startup_error: Arc::new(Mutex::new(None)),
     };
     let transcribe_result = service
         .transcribe_file_internal(

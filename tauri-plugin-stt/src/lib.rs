@@ -30,9 +30,9 @@ impl<R: Runtime, T: Manager<R>> crate::TauriPluginSttExt<R> for T {
     }
 }
 
-/// Initializes the plugin.
-pub fn init<R: Runtime>() -> TauriPlugin<R> {
-    Builder::new("stt")
+/// Initializes the plugin with configuration.
+pub fn init<R: Runtime>() -> TauriPlugin<R, Config> {
+    Builder::<R, Config>::new("stt")
         .invoke_handler(tauri::generate_handler![
             commands::bootstrap_stt,
             commands::download_model,
@@ -51,14 +51,16 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::get_overlay_mode,
         ])
         .setup(|app, api| {
-            // #[cfg(feature = "recorder-bridge")]
-            // {
-            //     // Register recorder if bridge is enabled
-            //     // app.plugin(tauri_plugin_recorder::init())?;
-            // }
+            #[cfg(desktop)]
+            let tauri_plugin_stt = desktop::init(app)?;
 
             #[cfg(desktop)]
-            let tauri_plugin_stt = desktop::init(app, api)?;
+            {
+                // Perform automated model load at startup as per CODIN-254.
+                let config = api.config();
+                tauri_plugin_stt.auto_bootstrap(config);
+            }
+
             app.manage(tauri_plugin_stt);
             Ok(())
         })

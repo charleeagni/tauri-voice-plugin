@@ -50,6 +50,8 @@ def _make_progress_tqdm(model_repo):
         """Wraps tqdm; serialises HuggingFace download progress to stdout."""
 
         def __init__(self, *args, **kwargs):
+            # huggingface_hub passes 'name', which tqdm rejects in many versions.
+            kwargs.pop("name", None)
             super().__init__(*args, **kwargs)
 
             # Emit start once tqdm initialises with a known total.
@@ -67,7 +69,6 @@ def _make_progress_tqdm(model_repo):
             # Compute fraction; None when total is unknown.
             total = self.total or 0
             percent = round(self.n / total, 4) if total > 0 else None
-
             _emit_progress(
                 "download",
                 "in_progress",
@@ -77,10 +78,11 @@ def _make_progress_tqdm(model_repo):
             )
 
         def close(self):
-            if not getattr(self, "_closed_progress", False):
-                self._closed_progress = True
-                _emit_progress("download", "complete", model_repo, percent=1.0)
+            # Safety check: if __init__ failed, attributes like 'disable' might be missing.
+            if not hasattr(self, "disable"):
+                return
             super().close()
+            _emit_progress("download", "complete", model_repo)
 
     return _ProgressTqdm
 

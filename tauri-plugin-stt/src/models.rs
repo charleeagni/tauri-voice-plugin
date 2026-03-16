@@ -304,6 +304,21 @@ pub struct RecordingResult {
     pub trigger_source: TriggerSource,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Config {
+    /// Whisper model ID to load at startup. Defaults to "tiny.en".
+    pub model_id: Option<String>,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            model_id: Some("tiny.en".to_string()),
+        }
+    }
+}
+
 // Commands schema
 // Using snake_case default by serde config (needs #[serde(rename_all = "snake_case")] if struct but fields are already snake_case)
 
