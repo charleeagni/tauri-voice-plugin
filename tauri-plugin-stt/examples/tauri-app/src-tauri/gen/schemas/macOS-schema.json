@@ -2559,10 +2559,10 @@
           "markdownDescription": "Denies the stdin_write command without any pre-configured scope."
         },
         {
-          "description": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-bootstrap-stt`\n- `allow-transcribe-file`\n- `allow-stt-health`\n- `allow-setup-record-transcribe-pipeline`\n- `allow-initialize-recorder-runtime`\n- `allow-start-recording`\n- `allow-stop-recording`\n- `allow-set-hotkey-bindings`\n- `allow-capture-hotkey`\n- `allow-get-runtime-state`\n- `allow-set-output-destination`\n- `allow-get-output-destination`\n- `allow-set-overlay-mode`\n- `allow-get-overlay-mode`",
+          "description": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-bootstrap-stt`\n- `allow-download-model`\n- `allow-transcribe-file`\n- `allow-stt-health`\n- `allow-setup-record-transcribe-pipeline`\n- `allow-initialize-recorder-runtime`\n- `allow-start-recording`\n- `allow-stop-recording`\n- `allow-set-hotkey-bindings`\n- `allow-capture-hotkey`\n- `allow-get-runtime-state`\n- `allow-set-output-destination`\n- `allow-get-output-destination`\n- `allow-set-overlay-mode`\n- `allow-get-overlay-mode`",
           "type": "string",
           "const": "stt:default",
-          "markdownDescription": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-bootstrap-stt`\n- `allow-transcribe-file`\n- `allow-stt-health`\n- `allow-setup-record-transcribe-pipeline`\n- `allow-initialize-recorder-runtime`\n- `allow-start-recording`\n- `allow-stop-recording`\n- `allow-set-hotkey-bindings`\n- `allow-capture-hotkey`\n- `allow-get-runtime-state`\n- `allow-set-output-destination`\n- `allow-get-output-destination`\n- `allow-set-overlay-mode`\n- `allow-get-overlay-mode`"
+          "markdownDescription": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-bootstrap-stt`\n- `allow-download-model`\n- `allow-transcribe-file`\n- `allow-stt-health`\n- `allow-setup-record-transcribe-pipeline`\n- `allow-initialize-recorder-runtime`\n- `allow-start-recording`\n- `allow-stop-recording`\n- `allow-set-hotkey-bindings`\n- `allow-capture-hotkey`\n- `allow-get-runtime-state`\n- `allow-set-output-destination`\n- `allow-get-output-destination`\n- `allow-set-overlay-mode`\n- `allow-get-overlay-mode`"
         },
         {
           "description": "Enables the bootstrap_stt command without any pre-configured scope.",
@@ -2575,6 +2575,12 @@
           "type": "string",
           "const": "stt:allow-capture-hotkey",
           "markdownDescription": "Enables the capture_hotkey command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the download_model command without any pre-configured scope.",
+          "type": "string",
+          "const": "stt:allow-download-model",
+          "markdownDescription": "Enables the download_model command without any pre-configured scope."
         },
         {
           "description": "Enables the get_output_destination command without any pre-configured scope.",
@@ -2659,6 +2665,12 @@
           "type": "string",
           "const": "stt:deny-capture-hotkey",
           "markdownDescription": "Denies the capture_hotkey command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the download_model command without any pre-configured scope.",
+          "type": "string",
+          "const": "stt:deny-download-model",
+          "markdownDescription": "Denies the download_model command without any pre-configured scope."
         },
         {
           "description": "Denies the get_output_destination command without any pre-configured scope.",

@@ -2,6 +2,7 @@
 description = "Default permissions for the plugin"
 permissions = [
     "allow-bootstrap-stt",
+    "allow-download-model",
     "allow-transcribe-file",
     "allow-stt-health",
     "allow-setup-record-transcribe-pipeline",

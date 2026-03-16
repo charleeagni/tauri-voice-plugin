@@ -10,16 +10,17 @@ Local STT plugin for Tauri using a bundled `uv` sidecar.
 ## Platform Constraints
 - Primary target: `aarch64-apple-darwin` (macOS Apple Silicon).
 - Runtime expects `uv` sidecar packaging in host Tauri app.
-- Python runtime is pinned to `3.14`.
+- Python runtime is pinned to `3.12`.
 
 ## Canonical Runtime Paths
 - `APP_DATA_DIR/python/.venv`
 - `APP_DATA_DIR/python/.venv/bin/python`
-- `APP_DATA_DIR/models`
+- `APP_DATA_DIR/python/cache`
+- `APP_DATA_DIR/python/tools`
 - `APP_DATA_DIR/logs`
 
 ## Pinned Dependencies
-- Python: `3.14`
+- Python: `3.12`
 - Python packages: `tauri-plugin-stt/requirements/requirements-stt.lock.txt`
 - Rust crate toolchain: from `Cargo.toml` and `Cargo.lock`
 
@@ -77,7 +78,8 @@ Response:
 
 Current behavior:
 - The command path is wired and validated.
-- Returned transcription text is currently simulated.
+- Transcription executes by spawning the Python transcriber script.
+- Model resolution and load happen during transcription execution.
 
 Error codes:
 - `not_ready`

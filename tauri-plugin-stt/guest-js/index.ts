@@ -16,6 +16,36 @@ export type BootstrapResponse =
   | { status: "ready"; details: string }
   | { status: "alreadyReady"; details: string };
 
+export interface DownloadModelRequest {
+  /** Allowlisted Whisper model ID to download and load on demand. */
+  modelId: string;
+}
+
+export interface DownloadModelResponse {
+  /** Effective model now loaded in the worker. */
+  modelId: string;
+  /** True if the worker was already loaded with this model. */
+  alreadyActive: boolean;
+}
+
+export type ModelProgressPhase = "download" | "preload";
+export type ModelProgressState = "start" | "in_progress" | "complete" | "failed";
+
+export interface ModelProgressEvent {
+  contractVersion: string;
+  eventId: string;
+  emittedAtMs: number;
+  model: string;
+  phase: ModelProgressPhase;
+  state: ModelProgressState;
+  /** Download fraction 0.0–1.0; null when unavailable. */
+  percent: number | null;
+  /** Active filename during download; null during preload. */
+  filename: string | null;
+  /** Error message; present only on "failed" state. */
+  error: string | null;
+}
+
 export interface TranscribeRequest {
   path: string;
   modelId?: string;
@@ -192,6 +222,22 @@ export async function bootstrapStt(
   payload: BootstrapRequest = {},
 ): Promise<BootstrapResponse> {
   return await invoke("plugin:stt|bootstrap_stt", { payload });
+}
+
+/**
+ * Downloads and loads a Whisper model on demand.
+ *
+ * Blocks until the model is fully ready to transcribe.
+ * Subscribe to CHANNELS.PROGRESS before calling to receive live progress events.
+ *
+ * :param payload: Model ID to download. Must be an allowlisted model.
+ * :return: Active model ID and whether it was already loaded.
+ * :raises Error: If a download is already in progress or model ID is invalid.
+ */
+export async function downloadModel(
+  payload: DownloadModelRequest,
+): Promise<DownloadModelResponse> {
+  return await invoke("plugin:stt|download_model", { payload });
 }
 
 /**
@@ -374,6 +420,7 @@ export const CHANNELS = {
   ERROR: "tauri-audio-plugin://error",
   COMPLETE: "tauri-audio-plugin://complete",
   LIVE: "tauri-audio-plugin://live",
+  PROGRESS: "tauri-audio-plugin://model-progress",
 } as const;
 
 export interface StateEvent {
@@ -487,6 +534,20 @@ export async function subscribeOverlayState(
  * :param onUpdate: Callback to execute when transcript text updates.
  * :return: transcript operations handler.
  */
+/**
+ * Subscribes to model download and preload progress events.
+ *
+ * :param onProgress: Callback invoked on each progress event.
+ * :return: A teardown function to unsubscribe.
+ */
+export async function listenModelProgress(
+  onProgress: (event: ModelProgressEvent) => void,
+): Promise<() => void> {
+  return await listen<ModelProgressEvent>(CHANNELS.PROGRESS, (event) => {
+    onProgress(event.payload);
+  });
+}
+
 export function createTranscriptDisplayState(
   onUpdate: (text: string | null) => void,
 ) {

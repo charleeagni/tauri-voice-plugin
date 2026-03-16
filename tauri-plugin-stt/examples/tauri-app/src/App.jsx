@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react';
+import { flushSync } from 'react-dom';
 import { listen } from '@tauri-apps/api/event';
 import {
   sttHealth,
   bootstrapStt,
+  downloadModel,
+  listenModelProgress,
   getRuntimeState,
   captureHotkey,
   initializeRecorderRuntime,
@@ -73,6 +76,8 @@ function App() {
   const [isRuntimeInitialized, setIsRuntimeInitialized] = useState(false);
   const [overlayMode, setOverlayModeState] = useState('consumer');
   const [pipelineActive, setPipelineActive] = useState(false);
+  const [downloadModelId, setDownloadModelId] = useState('tiny.en');
+  const [modelProgress, setModelProgress] = useState(null);
 
   const updateResponse = (val) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -124,6 +129,15 @@ function App() {
           });
         });
 
+        const unlistenProgress = await listenModelProgress((event) => {
+          console.log("Received PROGRESS event", event);
+          // flushSync forces React to render immediately, bypassing batch deferral.
+          flushSync(() => setModelProgress(event));
+          if (event.state === 'complete' && event.phase === 'preload') {
+            setTimeout(() => setModelProgress(null), 2000);
+          }
+        });
+
         // Get initial overlay mode
         const modeRes = await getOverlayMode();
         setOverlayModeState(modeRes.overlayMode);
@@ -132,6 +146,7 @@ function App() {
           if (unlisten) unlisten();
           if (unlistenLive) unlistenLive();
           if (unlistenError) unlistenError();
+          if (unlistenProgress) unlistenProgress();
         };
       } catch (err) {
         updateResponse({ error: 'Failed to listen to channels', detail: err });
@@ -194,6 +209,16 @@ function App() {
           setIsRecording(true);
         }
       }
+    } catch (err) {
+      updateResponse(err);
+    }
+  };
+
+  const handleDownloadModel = async () => {
+    try {
+      updateResponse(`Downloading model: ${downloadModelId}...`);
+      const result = await downloadModel({ modelId: downloadModelId });
+      updateResponse(result);
     } catch (err) {
       updateResponse(err);
     }
@@ -312,11 +337,46 @@ function App() {
         </p>
       </div>
 
+      <div className="section">
+        <h2>Section 5 — Model Management</h2>
+        <p style={{ fontSize: '0.8rem', color: '#666' }}>
+          Bootstrap always loads <code>tiny.en</code>. Use Download to switch models on demand.
+        </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <select value={downloadModelId} onChange={(e) => setDownloadModelId(e.target.value)}>
+            {['tiny', 'tiny.en', 'base', 'base.en', 'small', 'small.en', 'medium', 'medium.en', 'large', 'large-v3', 'large-v3-turbo', 'turbo'].map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+          <button onClick={handleDownloadModel}>Download Model</button>
+        </div>
+        {modelProgress && (
+          <div className="model-progress">
+            <span className="progress-phase">{modelProgress.phase}</span>
+            <span className="progress-state">{modelProgress.state}</span>
+            {modelProgress.filename && (
+              <span className="progress-filename">{modelProgress.filename}</span>
+            )}
+            {modelProgress.percent != null && (
+              <div className="progress-bar-track">
+                <div
+                  className="progress-bar-fill"
+                  style={{ width: `${Math.round(modelProgress.percent * 100)}%` }}
+                />
+              </div>
+            )}
+            {modelProgress.error && (
+              <span className="progress-error">{modelProgress.error}</span>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="actions" style={{ marginTop: '20px' }}>
         <button onClick={() => sttHealth().then(updateResponse)}>Check Health</button>
         <button onClick={() => {
-          updateResponse("Starting STT Bootstrap...");
-          bootstrapStt().then(updateResponse).catch(updateResponse);
+          updateResponse('Starting STT Bootstrap (tiny.en)...');
+          bootstrapStt({}).then(updateResponse).catch(updateResponse);
         }}>Bootstrap STT</button>
         <button onClick={() => getRuntimeState().then(updateResponse)}>Get Runtime State</button>
         <button className="clear" onClick={clearLogs}>Clear Logs</button>

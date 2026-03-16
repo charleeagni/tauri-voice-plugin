@@ -49,9 +49,23 @@ impl BootstrapManager {
         envs.insert("UV_PYTHON_INSTALL".to_string(), "1".to_string());
         envs.insert("UV_PYTHON_DOWNLOADS".to_string(), "auto".to_string());
 
-        // 1. Create venv
-        println!("Creating python venv (version {})...", PYTHON_VERSION);
-        UvSidecarRunner::create_venv(app, &venv_dir, PYTHON_VERSION, &envs).await?;
+        // 1. Create or reuse venv
+        if python_bin.exists() {
+            println!("Reusing existing python venv at: {:?}", venv_dir);
+        } else {
+            if venv_dir.exists() {
+                println!("Removing stale python venv directory at: {:?}", venv_dir);
+                fs::remove_dir_all(&venv_dir).map_err(|e| {
+                    Error::bootstrap_failed(format!(
+                        "Failed to remove stale venv dir: {}",
+                        e
+                    ))
+                })?;
+            }
+
+            println!("Creating python venv (version {})...", PYTHON_VERSION);
+            UvSidecarRunner::create_venv(app, &venv_dir, PYTHON_VERSION, &envs).await?;
+        }
 
         // 2. Install dependencies
         println!("Installing dependencies from lockfile: {:?}", lock_file);

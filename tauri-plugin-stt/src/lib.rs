@@ -35,6 +35,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("stt")
         .invoke_handler(tauri::generate_handler![
             commands::bootstrap_stt,
+            commands::download_model,
             commands::transcribe_file,
             commands::stt_health,
             commands::setup_record_transcribe_pipeline,

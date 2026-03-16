@@ -1,14 +1,16 @@
 use serde::de::DeserializeOwned;
+use std::io::{BufRead, Write};
 use std::path::PathBuf;
-use std::process::Command;
-use std::sync::{Arc, Mutex};
+use std::process::{Command, Stdio};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 use tauri::{plugin::PluginApi, AppHandle, Emitter, Listener, Manager, Runtime};
 use tauri_plugin_shell::ShellExt;
 
 use crate::models::*;
 
-const DEFAULT_MODEL: &str = "tiny";
+const DEFAULT_MODEL: &str = "tiny.en";
+const PROGRESS_CHANNEL: &str = "tauri-audio-plugin://model-progress";
 const COMPLETE_CHANNEL: &str = "tauri-audio-plugin://complete";
 const STATE_CHANNEL: &str = "tauri-audio-plugin://state";
 const LIVE_CHANNEL: &str = "tauri-audio-plugin://live";
@@ -31,7 +33,14 @@ const ALLOWLISTED_MODELS: &[&str] = &[
 ];
 
 fn model_repo_for(model_id: &str) -> String {
-    format!("mlx-community/whisper-{}", model_id)
+    // These repos exist without the -mlx suffix in mlx-community.
+    const NO_MLX_SUFFIX: &[&str] = &["large-v3-turbo", "turbo"];
+
+    if NO_MLX_SUFFIX.contains(&model_id) {
+        format!("mlx-community/whisper-{}", model_id)
+    } else {
+        format!("mlx-community/whisper-{}-mlx", model_id)
+    }
 }
 
 pub fn init<R: Runtime, C: DeserializeOwned>(
@@ -41,6 +50,8 @@ pub fn init<R: Runtime, C: DeserializeOwned>(
     Ok(TauriPluginStt {
         app: app.clone(),
         pipeline_state: Arc::new(Mutex::new(PipelineRuntimeState::default())),
+        worker: Arc::new(Mutex::new(None)),
+        download_in_progress: Arc::new(Mutex::new(false)),
     })
 }
 
@@ -48,6 +59,25 @@ pub fn init<R: Runtime, C: DeserializeOwned>(
 pub struct TauriPluginStt<R: Runtime> {
     app: AppHandle<R>,
     pipeline_state: Arc<Mutex<PipelineRuntimeState>>,
+
+    // Long-lived worker process; populated by bootstrap_stt.
+    worker: Arc<Mutex<Option<SttWorker>>>,
+
+    // Guards concurrent download_model / bootstrap_stt calls.
+    download_in_progress: Arc<Mutex<bool>>,
+}
+
+/// Persistent Python worker process for model-loaded transcription.
+struct SttWorker {
+    // Owns the process; dropped when worker is replaced or plugin shuts down.
+    #[allow(dead_code)]
+    child: std::process::Child,
+    stdin: std::process::ChildStdin,
+    rx: mpsc::Receiver<String>,
+
+    // Loaded model identifier; retained for health diagnostics.
+    #[allow(dead_code)]
+    model_id: String,
 }
 
 #[derive(Debug, Clone)]
@@ -68,7 +98,203 @@ impl<R: Runtime> TauriPluginStt<R> {
         &self,
         payload: BootstrapRequest,
     ) -> crate::Result<BootstrapResponse> {
-        crate::bootstrap_manager::BootstrapManager::bootstrap_stt(&self.app, payload).await
+        let response =
+            crate::bootstrap_manager::BootstrapManager::bootstrap_stt(&self.app, payload).await?;
+
+        // Spawn worker with the fixed default model if not already running.
+        let mut worker_guard = self.worker.lock().expect("worker mutex poisoned");
+        if worker_guard.is_none() {
+            *worker_guard = Some(self.spawn_worker(DEFAULT_MODEL)?);
+        }
+
+        Ok(response)
+    }
+
+    pub fn download_model(
+        &self,
+        payload: DownloadModelRequest,
+    ) -> crate::Result<DownloadModelResponse> {
+        // Validate model against allowlist.
+        if !ALLOWLISTED_MODELS.contains(&payload.model_id.as_str()) {
+            return Err(crate::Error::invalid_input(
+                "Invalid or unsupported model ID",
+            ));
+        }
+
+        // Fail fast if a download is already running.
+        {
+            let mut in_progress = self
+                .download_in_progress
+                .lock()
+                .expect("download_in_progress mutex poisoned");
+            if *in_progress {
+                return Err(crate::Error::not_ready(
+                    "A model is already downloading, please wait",
+                ));
+            }
+            *in_progress = true;
+        }
+
+        let result = self.download_model_inner(&payload.model_id);
+
+        // Always clear the in-progress flag before returning.
+        *self
+            .download_in_progress
+            .lock()
+            .expect("download_in_progress mutex poisoned") = false;
+
+        result
+    }
+
+    fn download_model_inner(&self, model_id: &str) -> crate::Result<DownloadModelResponse> {
+        // Return early if worker already loaded with the requested model.
+        {
+            let worker_guard = self.worker.lock().expect("worker mutex poisoned");
+            if let Some(ref w) = *worker_guard {
+                if w.model_id == model_id {
+                    return Ok(DownloadModelResponse {
+                        model_id: model_id.to_string(),
+                        already_active: true,
+                    });
+                }
+            }
+        }
+
+        // Tear down the existing worker if loaded with a different model.
+        *self.worker.lock().expect("worker mutex poisoned") = None;
+
+        // Spawn new worker; progress events fire from reader thread during startup.
+        let new_worker = self.spawn_worker(model_id)?;
+        *self.worker.lock().expect("worker mutex poisoned") = Some(new_worker);
+
+        Ok(DownloadModelResponse {
+            model_id: model_id.to_string(),
+            already_active: false,
+        })
+    }
+
+    /// Spawns the persistent Python worker and waits for its ready signal.
+    fn spawn_worker(&self, model_id: &str) -> crate::Result<SttWorker> {
+        let app_data_dir = self.app.path().app_data_dir().map_err(|e| {
+            crate::Error::not_ready(format!("Cannot resolve app data dir: {}", e))
+        })?;
+        let python_bin = app_data_dir
+            .join("python")
+            .join(".venv")
+            .join("bin")
+            .join("python");
+        if !python_bin.exists() {
+            return Err(crate::Error::not_ready(format!(
+                "Python binary not found at {}",
+                python_bin.display()
+            )));
+        }
+
+        let script_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("scripts")
+            .join("worker.py");
+        if !script_path.exists() {
+            return Err(crate::Error::generation_failed(format!(
+                "Worker script not found at {}",
+                script_path.display()
+            )));
+        }
+
+        let model_repo = model_repo_for(model_id);
+        let mut child = Command::new(&python_bin)
+            .arg(&script_path)
+            .arg("--model")
+            .arg(&model_repo)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .map_err(|e| {
+                crate::Error::not_ready(format!("Failed to spawn STT worker: {e}"))
+            })?;
+
+        let stdout = child.stdout.take().expect("worker stdout not captured");
+        let stdin = child.stdin.take().expect("worker stdin not captured");
+
+        // Background thread reads worker stdout; progress lines become Tauri events.
+        let (tx, rx) = mpsc::channel::<String>();
+        let app_handle = self.app.clone();
+        std::thread::spawn(move || {
+            let reader = std::io::BufReader::new(stdout);
+            for line in reader.lines() {
+                match line {
+                    Ok(l) => {
+                        // Parse JSON; progress events go to Tauri, rest to rx.
+                        let is_progress = serde_json::from_str::<serde_json::Value>(&l)
+                            .ok()
+                            .and_then(|v| {
+                                v.get("status")
+                                    .and_then(|s| s.as_str())
+                                    .map(|s| s == "progress")
+                            })
+                            .unwrap_or(false);
+
+                        if is_progress {
+                            if let Ok(line) =
+                                serde_json::from_str::<WorkerProgressLine>(&l)
+                            {
+                                let now = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_millis() as u64;
+                                let event = ModelProgressEvent {
+                                    contract_version: CONTRACT_VERSION.to_string(),
+                                    event_id: format!("progress-{}", now),
+                                    emitted_at_ms: now,
+                                    model: line.model,
+                                    phase: line.phase,
+                                    state: line.state,
+                                    percent: line.percent,
+                                    filename: line.filename,
+                                    error: line.error,
+                                };
+                                let _ = app_handle.emit(PROGRESS_CHANNEL, event);
+                            }
+                        } else if tx.send(l).is_err() {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+
+        // Wait for the ready signal; skip unrecognised stdout lines from libraries.
+        let deadline = std::time::Instant::now() + Duration::from_secs(300);
+        loop {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            if remaining.is_zero() {
+                return Err(crate::Error::not_ready(
+                    "STT worker startup timeout; model download may have failed",
+                ));
+            }
+            let line = rx.recv_timeout(remaining).map_err(|_| {
+                crate::Error::not_ready(
+                    "STT worker startup timeout; model download may have failed",
+                )
+            })?;
+
+            // Skip non-JSON and unrecognised lines; only stop on "ready".
+            let Ok(val) = serde_json::from_str::<serde_json::Value>(&line) else {
+                continue;
+            };
+            match val.get("status").and_then(|s| s.as_str()) {
+                Some("ready") => break,
+                _ => continue,
+            }
+        }
+
+        Ok(SttWorker {
+            child,
+            stdin,
+            rx,
+            model_id: model_id.to_string(),
+        })
     }
 
     pub async fn transcribe_file(
@@ -136,13 +362,21 @@ impl<R: Runtime> TauriPluginStt<R> {
 
             let app = self.app.clone();
             let pipeline_state = self.pipeline_state.clone();
+            let worker = self.worker.clone();
             let listener_id = self.app.listen_any(COMPLETE_CHANNEL, move |event| {
                 let payload = event.payload().to_string();
                 let app_for_task = app.clone();
                 let state_for_task = pipeline_state.clone();
+                let worker_for_task = worker.clone();
 
                 tauri::async_runtime::spawn(async move {
-                    process_complete_event(app_for_task, state_for_task, payload).await;
+                    process_complete_event(
+                        app_for_task,
+                        state_for_task,
+                        worker_for_task,
+                        payload,
+                    )
+                    .await;
                 });
             });
 
@@ -169,87 +403,74 @@ impl<R: Runtime> TauriPluginStt<R> {
         payload: TranscribeRequest,
         emit_live: bool,
     ) -> crate::Result<TranscribeResponse> {
-        // 1. Enforce readiness gate
+        // 1. Enforce readiness gate (includes worker check).
         let health = self.stt_health(HealthRequest {})?;
         if let HealthResponse::NotReady { reason, .. } = health {
             return Err(crate::Error::not_ready(reason));
         }
 
-        // 2. Reject invalid paths early
+        // 2. Reject invalid paths early.
         let audio_path = PathBuf::from(&payload.path);
-        println!("Transcribing audio file: {:?}", audio_path);
         if !audio_path.exists() || !audio_path.is_file() {
             return Err(crate::Error::invalid_input(
                 "Audio file does not exist or is not a file",
             ));
         }
 
-        // 3. Resolve effective model ID
-        let model_id = payload.model_id.as_deref().unwrap_or(DEFAULT_MODEL);
-
-        // 4. Validate effective model ID against allowlist
-        if !ALLOWLISTED_MODELS.contains(&model_id) {
-            return Err(crate::Error::invalid_input(
-                "Invalid or unsupported model ID",
-            ));
-        }
-
-        // 5. Execute transcription using app-local python venv + mlx_whisper.
-        let app_data_dir = self.app.path().app_data_dir().map_err(|e| {
-            crate::Error::not_ready(format!("Cannot resolve app data dir: {}", e))
-        })?;
-        let python_bin = app_data_dir.join("python").join(".venv").join("bin").join("python");
-        if !python_bin.exists() {
-            return Err(crate::Error::not_ready(format!(
-                "Python binary not found at {}",
-                python_bin.display()
-            )));
-        }
-
-        let script_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("scripts")
-            .join("transcribe.py");
-        if !script_path.exists() {
-            return Err(crate::Error::generation_failed(format!(
-                "Transcription script not found at {}",
-                script_path.display()
-            )));
-        }
-
-        let output = Command::new(&python_bin)
-            .arg(&script_path)
-            .arg("--audio")
-            .arg(audio_path.as_os_str())
-            .arg("--model")
-            .arg(model_repo_for(model_id))
-            .output()
-            .map_err(|e| {
-                crate::Error::generation_failed(format!("Failed to execute python transcriber: {e}"))
+        // 3. Send request to the persistent worker; receive transcript.
+        let req_id = format!("req-{}", now_ms());
+        let text = {
+            let mut worker_guard = self.worker.lock().expect("worker mutex poisoned");
+            let worker = worker_guard.as_mut().ok_or_else(|| {
+                crate::Error::not_ready(
+                    "STT worker not initialized; call bootstrapStt first",
+                )
             })?;
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            let message = if stderr.is_empty() {
-                format!("Transcriber failed with status {}", output.status)
-            } else {
-                format!("Transcriber failed: {}", stderr)
-            };
-            return Err(crate::Error::generation_failed(message));
-        }
+            // Write JSON request line to worker stdin.
+            let req_line = serde_json::json!({"id": req_id, "audio": payload.path}).to_string();
+            writeln!(worker.stdin, "{}", req_line).map_err(|e| {
+                crate::Error::generation_failed(format!(
+                    "Failed to write to worker stdin: {e}"
+                ))
+            })?;
+            worker.stdin.flush().map_err(|e| {
+                crate::Error::generation_failed(format!("Failed to flush worker stdin: {e}"))
+            })?;
 
-        let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        println!("Transcription complete ({} chars): \"{}\"", text.len(), text);
+            // Wait for response with a per-transcription timeout.
+            let resp_line =
+                worker
+                    .rx
+                    .recv_timeout(Duration::from_secs(120))
+                    .map_err(|_| {
+                        crate::Error::generation_failed("Transcription timeout")
+                    })?;
+
+            let resp: serde_json::Value =
+                serde_json::from_str(&resp_line).map_err(|e| {
+                    crate::Error::generation_failed(format!(
+                        "Worker response parse failed: {e}"
+                    ))
+                })?;
+
+            if let Some(err) = resp.get("error").and_then(|e| e.as_str()) {
+                return Err(crate::Error::generation_failed(err.to_string()));
+            }
+
+            resp.get("text")
+                .and_then(|t| t.as_str())
+                .unwrap_or("")
+                .to_string()
+        };
+
         if text.is_empty() {
             return Err(crate::Error::generation_failed(
                 "Transcriber returned empty output",
             ));
         }
 
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
-
+        let now = now_ms();
         if emit_live {
             let event = crate::models::LiveEvent {
                 contract_version: crate::models::CONTRACT_VERSION.to_string(),
@@ -262,9 +483,7 @@ impl<R: Runtime> TauriPluginStt<R> {
             let _ = self.app.emit(LIVE_CHANNEL, event);
         }
 
-        Ok(TranscribeResponse {
-            text,
-        })
+        Ok(TranscribeResponse { text })
     }
 
     pub fn stt_health(&self, _payload: HealthRequest) -> crate::Result<HealthResponse> {
@@ -333,7 +552,21 @@ impl<R: Runtime> TauriPluginStt<R> {
             },
         });
 
-        // Aggregate results
+        // 5. Worker check; model must be downloaded and loaded into memory.
+        let worker_guard = self.worker.lock().expect("worker mutex poisoned");
+        let worker_ready = worker_guard.is_some();
+        diagnostics.push(DiagnosticEntry {
+            name: "stt_worker".into(),
+            ready: worker_ready,
+            reason: if worker_ready {
+                None
+            } else {
+                Some("STT worker not initialized; call bootstrapStt to load model".into())
+            },
+        });
+        drop(worker_guard);
+
+        // Aggregate results.
         if diagnostics.iter().all(|d| d.ready) {
             Ok(HealthResponse::Ready { diagnostics })
         } else {
@@ -356,6 +589,7 @@ impl<R: Runtime> TauriPluginStt<R> {
 async fn process_complete_event<R: Runtime>(
     app: AppHandle<R>,
     pipeline_state: Arc<Mutex<PipelineRuntimeState>>,
+    worker: Arc<Mutex<Option<SttWorker>>>,
     payload: String,
 ) {
     use tauri_plugin_recorder::RecorderExt;
@@ -378,6 +612,8 @@ async fn process_complete_event<R: Runtime>(
     let service = TauriPluginStt {
         app: app.clone(),
         pipeline_state,
+        worker,
+        download_in_progress: Arc::new(Mutex::new(false)),
     };
     let transcribe_result = service
         .transcribe_file_internal(

@@ -11,6 +11,77 @@ pub enum BootstrapResponse {
     AlreadyReady { details: String },
 }
 
+/// Partial progress payload emitted by worker.py; metadata is added by Rust.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkerProgressLine {
+    pub model: String,
+    pub phase: ModelProgressPhase,
+    pub state: ModelProgressState,
+    pub percent: Option<f32>,
+    pub filename: Option<String>,
+    pub error: Option<String>,
+}
+
+// On-demand model download request/response.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadModelRequest {
+    /// Allowlisted Whisper model ID to download and load.
+    pub model_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadModelResponse {
+    /// Effective model now loaded in the worker.
+    pub model_id: String,
+
+    /// True if the worker was already loaded with this model.
+    pub already_active: bool,
+}
+
+// Progress phase: download (network fetch) or preload (memory load).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelProgressPhase {
+    Download,
+    Preload,
+}
+
+// Progress lifecycle state for a phase.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelProgressState {
+    Start,
+    InProgress,
+    Complete,
+    Failed,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelProgressEvent {
+    pub contract_version: String,
+    pub event_id: String,
+    pub emitted_at_ms: u64,
+
+    /// Model repo identifier being loaded.
+    pub model: String,
+
+    pub phase: ModelProgressPhase,
+    pub state: ModelProgressState,
+
+    /// Download fraction 0.0–1.0; None when unavailable.
+    pub percent: Option<f32>,
+
+    /// Active filename during download; None during preload.
+    pub filename: Option<String>,
+
+    /// Error message; present only on Failed state.
+    pub error: Option<String>,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TranscribeRequest {

@@ -21,7 +21,7 @@ impl UvSidecarRunner {
             .shell()
             .sidecar("uv")
             .map_err(|e| Error::bootstrap_failed(format!("Failed to spawn uv sidecar: {}", e)))?
-            .args(["venv", &venv_path_str, "--python", python_version])
+            .args(["venv", &venv_path_str, "--python", python_version, "--clear"])
             .envs(envs.clone())
             .spawn()
             .map_err(|e| Error::bootstrap_failed(format!("Failed to execute uv venv: {}", e)))?;

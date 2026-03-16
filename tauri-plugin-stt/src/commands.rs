@@ -24,6 +24,14 @@ pub(crate) async fn bootstrap_stt<R: Runtime>(
 }
 
 #[command]
+pub(crate) async fn download_model<R: Runtime>(
+    app: AppHandle<R>,
+    payload: DownloadModelRequest,
+) -> Result<DownloadModelResponse> {
+    app.tauri_plugin_stt().download_model(payload)
+}
+
+#[command]
 pub(crate) async fn transcribe_file<R: Runtime>(
     app: AppHandle<R>,
     payload: TranscribeRequest,

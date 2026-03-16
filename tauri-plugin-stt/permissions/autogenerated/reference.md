@@ -5,6 +5,7 @@ Default permissions for the plugin
 #### This default permission set includes the following:
 
 - `allow-bootstrap-stt`
+- `allow-download-model`
 - `allow-transcribe-file`
 - `allow-stt-health`
 - `allow-setup-record-transcribe-pipeline`
@@ -76,6 +77,32 @@ Enables the capture_hotkey command without any pre-configured scope.
 <td>
 
 Denies the capture_hotkey command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`stt:allow-download-model`
+
+</td>
+<td>
+
+Enables the download_model command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`stt:deny-download-model`
+
+</td>
+<td>
+
+Denies the download_model command without any pre-configured scope.
 
 </td>
 </tr>

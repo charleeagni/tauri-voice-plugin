@@ -1,5 +1,6 @@
 const COMMANDS: &[&str] = &[
     "bootstrap_stt",
+    "download_model",
     "transcribe_file",
     "stt_health",
     "setup_record_transcribe_pipeline",
