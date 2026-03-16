@@ -123,13 +123,28 @@ pub struct DiagnosticEntry {
     pub reason: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum LifecycleState {
+    Uninitialized,
+    Initializing,
+    Ready,
+    Failed,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "status", rename_all = "camelCase")]
 pub enum HealthResponse {
+    #[serde(rename = "ready")]
     Ready {
+        #[serde(rename = "lifecycleState")]
+        lifecycle_state: LifecycleState,
         diagnostics: Vec<DiagnosticEntry>,
     },
+    #[serde(rename = "notReady")]
     NotReady {
+        #[serde(rename = "lifecycleState")]
+        lifecycle_state: LifecycleState,
         reason: String,
         diagnostics: Vec<DiagnosticEntry>,
     },

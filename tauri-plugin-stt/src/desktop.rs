@@ -102,6 +102,8 @@ impl<R: Runtime> TauriPluginStt<R> {
             .clone()
             .unwrap_or_else(|| DEFAULT_MODEL.to_string());
 
+        println!("[stt] Starting auto_bootstrap with model: {}", model_id);
+
         // 1. Perform venv and dependency setup (sync block on async runtime).
         let bootstrap_result = tauri::async_runtime::block_on(async {
             crate::bootstrap_manager::BootstrapManager::bootstrap_stt(&self.app, BootstrapRequest {})
@@ -118,11 +120,12 @@ impl<R: Runtime> TauriPluginStt<R> {
         // 2. Load model into memory by spawning the worker.
         match self.spawn_worker(&model_id) {
             Ok(worker) => {
+                println!("[stt] auto_bootstrap: worker spawned successfully");
                 *self.worker.lock().unwrap() = Some(worker);
             }
             Err(e) => {
                 let error_msg = format!("Startup model load failed for {model_id}: {e}");
-                eprintln!("{error_msg}");
+                eprintln!("[stt] auto_bootstrap: {}", error_msg);
                 *self.startup_error.lock().unwrap() = Some(error_msg);
             }
         }
@@ -532,6 +535,8 @@ impl<R: Runtime> TauriPluginStt<R> {
     pub fn stt_health(&self, _payload: HealthRequest) -> crate::Result<HealthResponse> {
         let mut diagnostics = Vec::new();
 
+        let is_downloading = *self.download_in_progress.lock().unwrap();
+
         // 0. Explicit startup failure check
         if let Some(error) = self.startup_error.lock().unwrap().clone() {
             diagnostics.push(DiagnosticEntry {
@@ -540,6 +545,7 @@ impl<R: Runtime> TauriPluginStt<R> {
                 reason: Some(error.clone()),
             });
             return Ok(HealthResponse::NotReady {
+                lifecycle_state: LifecycleState::Failed,
                 reason: error,
                 diagnostics,
             });
@@ -563,6 +569,7 @@ impl<R: Runtime> TauriPluginStt<R> {
                     reason: Some(reason.clone()),
                 });
                 return Ok(HealthResponse::NotReady {
+                    lifecycle_state: LifecycleState::Failed,
                     reason,
                     diagnostics,
                 });
@@ -622,9 +629,23 @@ impl<R: Runtime> TauriPluginStt<R> {
         });
         drop(worker_guard);
 
+        let lifecycle_state = if is_downloading {
+            LifecycleState::Initializing
+        } else if worker_ready && diagnostics.iter().all(|d| d.ready) {
+            LifecycleState::Ready
+        } else {
+            LifecycleState::Uninitialized
+        };
+
+        println!("[stt] stt_health: worker_ready={}, is_downloading={}, lifecycle_state={:?}", 
+            worker_ready, is_downloading, lifecycle_state);
+
         // Aggregate results.
         if diagnostics.iter().all(|d| d.ready) {
-            Ok(HealthResponse::Ready { diagnostics })
+            Ok(HealthResponse::Ready {
+                lifecycle_state,
+                diagnostics,
+            })
         } else {
             let reason = diagnostics
                 .iter()
@@ -633,6 +654,7 @@ impl<R: Runtime> TauriPluginStt<R> {
                 .unwrap_or_else(|| "Unknown readiness failure".into());
 
             Ok(HealthResponse::NotReady {
+                lifecycle_state,
                 reason,
                 diagnostics,
             })

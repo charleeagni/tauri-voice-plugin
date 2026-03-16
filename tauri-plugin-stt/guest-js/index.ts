@@ -72,9 +72,12 @@ export interface DiagnosticEntry {
   ready: boolean;
   reason?: string;
 }
+
+export type LifecycleState = "uninitialized" | "initializing" | "ready" | "failed";
+
 export type HealthResponse =
-  | { status: "ready"; diagnostics: DiagnosticEntry[] }
-  | { status: "notReady"; reason: string; diagnostics: DiagnosticEntry[] };
+  | { status: "ready"; lifecycleState: LifecycleState; diagnostics: DiagnosticEntry[] }
+  | { status: "notReady"; lifecycleState: LifecycleState; reason: string; diagnostics: DiagnosticEntry[] };
 
 // -------------------------
 // Recorder Models
@@ -245,6 +248,10 @@ export async function downloadModel(
 
 /**
  * Transcribes an audio file using STT.
+ *
+ * **Lifecycle Contract:** The STT engine must be in the `ready` state (i.e. startup preloaded)
+ * before calling this. If the worker is not preloaded, it will fail immediately with a
+ * `notReady` error.
  *
  * :param payload: File path and model ID.
  * :return: The transcribed text.

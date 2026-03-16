@@ -57,6 +57,19 @@ npm install "file:path/to/voice_plugin/tauri-plugin-stt"
 
 ---
 
+## Lifecycle Contract
+
+The STT engine operates under a strict preload paradigm. Lazy initialization is not permitted prior to transcription calls. The lifecycle relies on an explicit `LifecycleState`:
+
+- `uninitialized`: Prior to bootstrapping or after a fatal background tear-down.
+- `initializing`: Process environment setup, model network fetch, or model memory preload is occurring.
+- `ready`: Worker process is alive and the target model is loaded.
+- `failed`: An unrecoverable error occurred during startup preload.
+
+### Enforcement
+- The application should explicitly query `sttHealth()` to check the `lifecycleState` or listen for `PROGRESS` events to determine readiness.
+- The `transcribeFile()` operation strictly targets the preloaded STT worker; it will fail immediately with a `notReady` error if the `lifecycleState` is not `ready`.
+
 ## Code Examples (Frontend)
 
 The frontend API exports all the commands and events from both the STT and Recorder domains in a unified location.

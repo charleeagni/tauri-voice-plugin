@@ -78,6 +78,7 @@ function App() {
   const [pipelineActive, setPipelineActive] = useState(false);
   const [downloadModelId, setDownloadModelId] = useState('tiny.en');
   const [modelProgress, setModelProgress] = useState(null);
+  const [lifecycleState, setLifecycleState] = useState('uninitialized');
 
   const updateResponse = (val) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -141,6 +142,16 @@ function App() {
         // Get initial overlay mode
         const modeRes = await getOverlayMode();
         setOverlayModeState(modeRes.overlayMode);
+
+        // Initial health check
+        sttHealth().then(res => {
+          console.log("[App] Initial health check result:", res);
+          updateResponse({ action: "initial_health", result: res });
+          if (res.lifecycleState) setLifecycleState(res.lifecycleState);
+        }).catch(err => {
+          console.error("Initial health check failed", err);
+          updateResponse({ error: "Initial health check failed", detail: err });
+        });
 
         return () => {
           if (unlisten) unlisten();
@@ -259,7 +270,12 @@ function App() {
 
   return (
     <main className="container">
-      <h1>STT Plugin Debugger</h1>
+      <div className="header">
+        <h1>STT Plugin Debugger</h1>
+        <div className={`lifecycle-badge ${lifecycleState}`}>
+          {lifecycleState.toUpperCase()}
+        </div>
+      </div>
 
       <div className="section">
         <h2>Section 1 — Hotkey Registration</h2>
@@ -380,7 +396,10 @@ function App() {
       </div>
 
       <div className="actions" style={{ marginTop: '20px' }}>
-        <button onClick={() => sttHealth().then(updateResponse)}>Check Health</button>
+        <button onClick={() => sttHealth().then(res => {
+          if (res.lifecycleState) setLifecycleState(res.lifecycleState);
+          return updateResponse(res);
+        })}>Check Health</button>
         <button onClick={() => {
           updateResponse('Starting STT Bootstrap (tiny.en)...');
           bootstrapStt({}).then(updateResponse).catch(updateResponse);
