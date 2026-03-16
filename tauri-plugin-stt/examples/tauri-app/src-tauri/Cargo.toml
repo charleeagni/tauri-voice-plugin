@@ -12,14 +12,15 @@ rust-version = "1.77.2"
 name = "tauri_app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[[bin]]
+name = "tauri-app"
+path = "src/main.rs"
 
 [build-dependencies]
-tauri-build = { version = "2.5.6", default-features = false , features = [] }
+tauri-build = { version = "2.5.6", features = [] }
 
 [dependencies]
 tauri = { version = "2.10.3", features = [] }
 tauri-plugin-stt = { path = "../../../" }
 tauri-plugin-shell = { version = "2" }
 tauri-plugin-recorder = { path = "../../../../../tauri_recorder_plugin/tauri-plugin-recorder" }
-

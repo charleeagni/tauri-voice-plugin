@@ -103,7 +103,10 @@ export interface EffectiveOutputDestination {
 }
 
 export type Phase = "idle" | "recording" | "transcribing" | "error";
-export type OverlayMode = "default" | "consumer" | "disabled";
+export type OverlayMode =
+  | { type: "default" }
+  | { type: "consumer"; consumerUrl: string }
+  | { type: "disabled" };
 export type PermissionState = "unknown" | "granted" | "denied";
 
 export interface RuntimeState {
@@ -507,7 +510,7 @@ export async function subscribeOverlayState(
   onState: (state: RuntimeState) => void,
   options: OverlayStateSubscriptionOptions = {},
 ): Promise<() => void> {
-  const mode = options.overlayMode ?? "consumer";
+  const mode = options.overlayMode ?? { type: "consumer", consumerUrl: "http://localhost:1420" };
   const includeInitial = options.includeInitialState ?? true;
 
   await setOverlayMode(mode);

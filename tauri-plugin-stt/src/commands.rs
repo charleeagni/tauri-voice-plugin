@@ -222,7 +222,7 @@ pub(crate) async fn set_overlay_mode<R: Runtime>(
         use tauri_plugin_recorder::RecorderExt;
         let rec_mode = match overlay_mode {
             OverlayMode::Default => tauri_plugin_recorder::OverlayMode::Default,
-            OverlayMode::Consumer => tauri_plugin_recorder::OverlayMode::Consumer,
+            OverlayMode::Consumer { consumer_url } => tauri_plugin_recorder::OverlayMode::Consumer { consumer_url },
             OverlayMode::Disabled => tauri_plugin_recorder::OverlayMode::Disabled,
         };
         let res = app.recorder().set_overlay_mode(rec_mode).map_err(|e| crate::Error::invalid_input(e.to_string()))?;

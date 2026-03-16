@@ -26,7 +26,7 @@ function VoiceOverlay({ mode, transcription }) {
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    if (mode === 'disabled') {
+    if (mode.type === 'disabled') {
       setIsVisible(false);
       return;
     }
@@ -74,7 +74,7 @@ function App() {
   const [lastRecordingPath, setLastRecordingPath] = useState('');
   const [transcription, setTranscription] = useState('');
   const [isRuntimeInitialized, setIsRuntimeInitialized] = useState(false);
-  const [overlayMode, setOverlayModeState] = useState('consumer');
+  const [overlayMode, setOverlayModeState] = useState({ type: 'consumer', consumerUrl: 'http://localhost:1420' });
   const [pipelineActive, setPipelineActive] = useState(false);
   const [downloadModelId, setDownloadModelId] = useState('tiny.en');
   const [modelProgress, setModelProgress] = useState(null);
@@ -236,8 +236,17 @@ function App() {
     }
   };
 
-  const handleOverlayModeChange = async (newMode) => {
+  const handleOverlayModeChange = async (newModeStr) => {
     try {
+      let newMode;
+      if (newModeStr === 'default') {
+        newMode = { type: 'default' };
+      } else if (newModeStr === 'consumer') {
+        newMode = { type: 'consumer', consumerUrl: 'http://localhost:1420' };
+      } else {
+        newMode = { type: 'disabled' };
+      }
+      
       const res = await setOverlayMode(newMode);
       setOverlayModeState(res.overlayMode);
       updateResponse({ action: 'setOverlayMode', mode: res.overlayMode });
@@ -309,7 +318,7 @@ function App() {
               type="radio" 
               name="overlayMode" 
               value="default" 
-              checked={overlayMode === 'default'} 
+              checked={overlayMode.type === 'default'} 
               onChange={() => handleOverlayModeChange('default')} 
             /> Default
           </label>
@@ -318,7 +327,7 @@ function App() {
               type="radio" 
               name="overlayMode" 
               value="consumer" 
-              checked={overlayMode === 'consumer'} 
+              checked={overlayMode.type === 'consumer'} 
               onChange={() => handleOverlayModeChange('consumer')} 
             /> Consumer
           </label>
@@ -327,7 +336,7 @@ function App() {
               type="radio" 
               name="overlayMode" 
               value="disabled" 
-              checked={overlayMode === 'disabled'} 
+              checked={overlayMode.type === 'disabled'} 
               onChange={() => handleOverlayModeChange('disabled')} 
             /> Disabled
           </label>

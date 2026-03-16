@@ -220,10 +220,11 @@ pub enum Phase {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case", tag = "type")]
 pub enum OverlayMode {
     Default,
-    Consumer,
+    #[serde(rename_all = "camelCase")]
+    Consumer { consumer_url: String },
     Disabled,
 }
 

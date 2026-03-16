@@ -429,23 +429,32 @@ impl<R: Runtime> TauriPluginStt<R> {
 
             // Write JSON request line to worker stdin.
             let req_line = serde_json::json!({"id": req_id, "audio": payload.path}).to_string();
-            writeln!(worker.stdin, "{}", req_line).map_err(|e| {
-                crate::Error::generation_failed(format!(
+
+            // Clear slot on I/O failure so stt_health reflects degraded state.
+            if let Err(e) = writeln!(worker.stdin, "{}", req_line) {
+                *worker_guard = None;
+                return Err(crate::Error::generation_failed(format!(
                     "Failed to write to worker stdin: {e}"
-                ))
-            })?;
-            worker.stdin.flush().map_err(|e| {
-                crate::Error::generation_failed(format!("Failed to flush worker stdin: {e}"))
-            })?;
+                )));
+            }
+
+            if let Err(e) = worker.stdin.flush() {
+                *worker_guard = None;
+                return Err(crate::Error::generation_failed(format!(
+                    "Failed to flush worker stdin: {e}"
+                )));
+            }
 
             // Wait for response with a per-transcription timeout.
-            let resp_line =
-                worker
-                    .rx
-                    .recv_timeout(Duration::from_secs(120))
-                    .map_err(|_| {
-                        crate::Error::generation_failed("Transcription timeout")
-                    })?;
+            let resp_line = match worker.rx.recv_timeout(Duration::from_secs(120)) {
+                Ok(line) => line,
+                Err(e) => {
+                    *worker_guard = None;
+                    return Err(crate::Error::generation_failed(format!(
+                        "Transcription timeout or worker disconnect: {e}"
+                    )));
+                }
+            };
 
             let resp: serde_json::Value =
                 serde_json::from_str(&resp_line).map_err(|e| {
