@@ -1,0 +1,44 @@
+graph LR
+    App["Tauri App Startup"] --> Setup["Plugin setup()"]
+    Setup --> State["TauriPluginStt state<br/>worker<br/>startup_preload_status<br/>startup_error"]
+    Setup --> Spawn["Spawn background preload task"]
+    Setup --> UI["UI becomes interactive immediately"]
+
+    Spawn --> Preload["Startup preload orchestrator"]
+    Preload --> Bootstrap["BootstrapManager.bootstrap_stt()<br/>env and dependencies"]
+    Bootstrap --> Worker["spawn_worker(model)<br/>download and preload model"]
+    Worker --> Python["Persistent Python STT worker"]
+
+    Preload --> Status["Update startup preload status<br/>idle -> running -> ready or failed"]
+    Preload --> Error["Persist startup_error on failure"]
+
+    State --> Health["stt_health()"]
+    Status --> Health
+    Error --> Health
+    Worker --> Health
+    Bootstrap --> Health
+
+    Health --> InitState["NotReady<br/>lifecycle: initializing"]
+    Health --> FailState["NotReady<br/>lifecycle: failed"]
+    Health --> ReadyState["Ready<br/>lifecycle: ready"]
+    Health --> UninitState["NotReady<br/>lifecycle: uninitialized"]
+
+    Transcribe["transcribe_file()"] --> Health
+    Health --> Gate{"Ready?"}
+    Gate -->|No| Reject["Return typed not_ready"]
+    Gate -->|Yes| UseWorker["Send request to loaded worker"]
+    UseWorker --> Python
+
+    Manual["Manual commands<br/>bootstrap_stt()<br/>download_model()"] --> State
+    Manual --> Status
+    Manual --> Worker
+
+    classDef startup fill:#f5efe6,stroke:#8a5a00,color:#2b1d00,stroke-width:1.5px;
+    classDef state fill:#e8f1e8,stroke:#2d6a4f,color:#0f2f20,stroke-width:1.5px;
+    classDef health fill:#e8edf8,stroke:#355070,color:#172033,stroke-width:1.5px;
+    classDef result fill:#f7e8ee,stroke:#a23b72,color:#3b1328,stroke-width:1.5px;
+
+    class App,Setup,Spawn,Preload,Bootstrap,Worker,Python,UI startup;
+    class State,Status,Error,Manual state;
+    class Health,Transcribe,Gate,UseWorker health;
+    class InitState,FailState,ReadyState,UninitState,Reject result;

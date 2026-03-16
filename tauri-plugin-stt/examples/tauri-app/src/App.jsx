@@ -166,6 +166,27 @@ function App() {
     setupListener();
   }, []);
 
+  // Poll health while initializing or uninitialized to reflect async startup
+  useEffect(() => {
+    let interval = null;
+    if (lifecycleState === 'initializing' || lifecycleState === 'uninitialized') {
+      interval = setInterval(async () => {
+        try {
+          const res = await sttHealth();
+          if (res && res.lifecycleState && res.lifecycleState !== lifecycleState) {
+            setLifecycleState(res.lifecycleState);
+            // Optional: updateResponse({ action: "health_poll_update", result: res });
+          }
+        } catch (err) {
+          console.error("Health poll failed", err);
+        }
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [lifecycleState]);
+
   const handleCaptureHotkey = async () => {
     try {
       updateResponse("Capturing hotkey (20s timeout)...");

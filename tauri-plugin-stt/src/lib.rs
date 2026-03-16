@@ -56,9 +56,12 @@ pub fn init<R: Runtime>() -> TauriPlugin<R, Config> {
 
             #[cfg(desktop)]
             {
-                // Perform automated model load at startup as per CODIN-254.
-                let config = api.config();
-                tauri_plugin_stt.auto_bootstrap(config);
+                // Perform background automated model load at startup as per CODIN-269.
+                let config = api.config().clone();
+                let plugin_clone = tauri_plugin_stt.clone();
+                tauri::async_runtime::spawn(async move {
+                    plugin_clone.startup_preload(config).await;
+                });
             }
 
             app.manage(tauri_plugin_stt);

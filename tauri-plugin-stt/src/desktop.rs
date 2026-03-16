@@ -8,6 +8,14 @@ use tauri_plugin_shell::ShellExt;
 
 use crate::models::*;
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum StartupPreloadStatus {
+    Idle,
+    Running,
+    Ready,
+    Failed,
+}
+
 const DEFAULT_MODEL: &str = "tiny.en";
 const PROGRESS_CHANNEL: &str = "tauri-audio-plugin://model-progress";
 const COMPLETE_CHANNEL: &str = "tauri-audio-plugin://complete";
@@ -51,6 +59,7 @@ pub fn init<R: Runtime>(
         worker: Arc::new(Mutex::new(None)),
         download_in_progress: Arc::new(Mutex::new(false)),
         startup_error: Arc::new(Mutex::new(None)),
+        startup_preload_status: Arc::new(Mutex::new(StartupPreloadStatus::Idle)),
     })
 }
 
@@ -67,6 +76,21 @@ pub struct TauriPluginStt<R: Runtime> {
 
     // Captured startup model load error for health visibility.
     startup_error: Arc<Mutex<Option<String>>>,
+
+    startup_preload_status: Arc<Mutex<StartupPreloadStatus>>,
+}
+
+impl<R: Runtime> Clone for TauriPluginStt<R> {
+    fn clone(&self) -> Self {
+        Self {
+            app: self.app.clone(),
+            pipeline_state: self.pipeline_state.clone(),
+            worker: self.worker.clone(),
+            download_in_progress: self.download_in_progress.clone(),
+            startup_error: self.startup_error.clone(),
+            startup_preload_status: self.startup_preload_status.clone(),
+        }
+    }
 }
 
 /// Persistent Python worker process for model-loaded transcription.
@@ -96,34 +120,43 @@ struct PipelineRuntimeState {
 }
 
 impl<R: Runtime> TauriPluginStt<R> {
-    pub fn auto_bootstrap(&self, config: &Config) {
+    pub async fn startup_preload(&self, config: Config) {
         let model_id = config
             .model_id
-            .clone()
             .unwrap_or_else(|| DEFAULT_MODEL.to_string());
 
-        // 1. Perform venv and dependency setup (sync block on async runtime).
-        let bootstrap_result = tauri::async_runtime::block_on(async {
-            crate::bootstrap_manager::BootstrapManager::bootstrap_stt(&self.app, BootstrapRequest {})
-                .await
-        });
+        {
+            let mut status = self.startup_preload_status.lock().unwrap();
+            match *status {
+                StartupPreloadStatus::Running | StartupPreloadStatus::Ready => return,
+                _ => {
+                    *status = StartupPreloadStatus::Running;
+                    *self.startup_error.lock().unwrap() = None;
+                }
+            }
+        }
+
+        let bootstrap_result = crate::bootstrap_manager::BootstrapManager::bootstrap_stt(&self.app, BootstrapRequest {}).await;
 
         if let Err(e) = bootstrap_result {
             let error_msg = format!("Startup bootstrap failed: {e}");
             eprintln!("{error_msg}");
             *self.startup_error.lock().unwrap() = Some(error_msg);
+            *self.startup_preload_status.lock().unwrap() = StartupPreloadStatus::Failed;
             return;
         }
 
-        // 2. Load model into memory by spawning the worker.
         match self.spawn_worker(&model_id) {
             Ok(worker) => {
                 *self.worker.lock().unwrap() = Some(worker);
+                *self.startup_error.lock().unwrap() = None;
+                *self.startup_preload_status.lock().unwrap() = StartupPreloadStatus::Ready;
             }
             Err(e) => {
                 let error_msg = format!("Startup model load failed for {model_id}: {e}");
                 eprintln!("{error_msg}");
                 *self.startup_error.lock().unwrap() = Some(error_msg);
+                *self.startup_preload_status.lock().unwrap() = StartupPreloadStatus::Failed;
             }
         }
     }
@@ -140,6 +173,9 @@ impl<R: Runtime> TauriPluginStt<R> {
         if worker_guard.is_none() {
             *worker_guard = Some(self.spawn_worker(DEFAULT_MODEL)?);
         }
+
+        *self.startup_error.lock().unwrap() = None;
+        *self.startup_preload_status.lock().unwrap() = StartupPreloadStatus::Ready;
 
         Ok(response)
     }
@@ -186,6 +222,8 @@ impl<R: Runtime> TauriPluginStt<R> {
             let worker_guard = self.worker.lock().expect("worker mutex poisoned");
             if let Some(ref w) = *worker_guard {
                 if w.model_id == model_id {
+                    *self.startup_error.lock().unwrap() = None;
+                    *self.startup_preload_status.lock().unwrap() = StartupPreloadStatus::Ready;
                     return Ok(DownloadModelResponse {
                         model_id: model_id.to_string(),
                         already_active: true,
@@ -200,6 +238,9 @@ impl<R: Runtime> TauriPluginStt<R> {
         // Spawn new worker; progress events fire from reader thread during startup.
         let new_worker = self.spawn_worker(model_id)?;
         *self.worker.lock().expect("worker mutex poisoned") = Some(new_worker);
+
+        *self.startup_error.lock().unwrap() = None;
+        *self.startup_preload_status.lock().unwrap() = StartupPreloadStatus::Ready;
 
         Ok(DownloadModelResponse {
             model_id: model_id.to_string(),
@@ -374,7 +415,10 @@ impl<R: Runtime> TauriPluginStt<R> {
                 .initialize_recorder_runtime()
                 .map_err(|e| crate::Error::not_ready(e.to_string()))?;
 
-            let _ = self.stt_health(HealthRequest {})?;
+            let health = self.stt_health(HealthRequest {})?;
+            if let HealthResponse::NotReady { reason, .. } = health {
+                return Err(crate::Error::not_ready(format!("STT is not ready: {reason}")));
+            }
 
             let recorder_config = payload.recorder_config.unwrap_or(RecorderConfig {
                 output_dir: None,
@@ -533,20 +577,31 @@ impl<R: Runtime> TauriPluginStt<R> {
         let mut diagnostics = Vec::new();
 
         let is_downloading = *self.download_in_progress.lock().unwrap();
+        let preload_status = self.startup_preload_status.lock().unwrap().clone();
 
-        // 0. Explicit startup failure check
-        if let Some(error) = self.startup_error.lock().unwrap().clone() {
-            diagnostics.push(DiagnosticEntry {
-                name: "startup_model_load".into(),
+        let preload_diagnostic = match preload_status {
+            StartupPreloadStatus::Running => DiagnosticEntry {
+                name: "startup_preload".into(),
                 ready: false,
-                reason: Some(error.clone()),
-            });
-            return Ok(HealthResponse::NotReady {
-                lifecycle_state: LifecycleState::Failed,
-                reason: error,
-                diagnostics,
-            });
-        }
+                reason: Some("startup preload is still in progress".into()),
+            },
+            StartupPreloadStatus::Failed => DiagnosticEntry {
+                name: "startup_preload".into(),
+                ready: false,
+                reason: Some(self.startup_error.lock().unwrap().clone().unwrap_or_else(|| "startup preload failed".into())),
+            },
+            StartupPreloadStatus::Idle => DiagnosticEntry {
+                name: "startup_preload".into(),
+                ready: false,
+                reason: Some("startup preload has not produced a ready worker yet".into()),
+            },
+            StartupPreloadStatus::Ready => DiagnosticEntry {
+                name: "startup_preload".into(),
+                ready: true,
+                reason: None,
+            },
+        };
+        diagnostics.push(preload_diagnostic);
 
         // 1. App Data Dir check
         let app_data_dir = match self.app.path().app_data_dir() {
@@ -621,12 +676,16 @@ impl<R: Runtime> TauriPluginStt<R> {
             reason: if worker_ready {
                 None
             } else {
-                Some("STT worker not initialized; call bootstrapStt to load model".into())
+                Some("STT worker not initialized; startup preload has not completed".into())
             },
         });
         drop(worker_guard);
 
-        let lifecycle_state = if is_downloading {
+        let lifecycle_state = if preload_status == StartupPreloadStatus::Running {
+            LifecycleState::Initializing
+        } else if preload_status == StartupPreloadStatus::Failed {
+            LifecycleState::Failed
+        } else if is_downloading {
             LifecycleState::Initializing
         } else if worker_ready && diagnostics.iter().all(|d| d.ready) {
             LifecycleState::Ready
@@ -687,6 +746,7 @@ async fn process_complete_event<R: Runtime>(
         worker,
         download_in_progress: Arc::new(Mutex::new(false)),
         startup_error: Arc::new(Mutex::new(None)),
+        startup_preload_status: Arc::new(Mutex::new(StartupPreloadStatus::Idle)),
     };
     let transcribe_result = service
         .transcribe_file_internal(
