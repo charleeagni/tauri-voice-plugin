@@ -1,0 +1,34 @@
+sequenceDiagram
+  actor App as Consumer App
+  participant JS as guest-js voice API
+  participant Cmd as plugin:voice commands
+  participant Voice as TauriPluginVoice
+  participant Boot as Shared Bootstrap
+  participant STT as STT Engine State
+  participant Worker as STT Worker
+
+  App->>JS: bootstrapVoice()
+  JS->>Cmd: plugin:voice|bootstrap_voice
+  Cmd->>Voice: bootstrap_voice(request)
+  Voice->>Boot: ensure shared Python environment
+  Boot-->>Voice: bootstrap ready
+  Voice->>STT: start or reuse default STT worker
+  STT->>Worker: spawn worker.py
+  Worker-->>STT: ready
+  STT-->>Voice: STT ready
+  Voice-->>Cmd: voice bootstrap response
+  Cmd-->>JS: response
+  JS-->>App: response
+
+  App->>JS: downloadModel({ engine: "stt", modelId })
+  JS->>Cmd: plugin:voice|download_model
+  Cmd->>Voice: download_model(request)
+  Voice->>STT: validate model and replace worker
+  STT->>Worker: spawn with requested model
+  Worker-->>STT: progress lines
+  STT-->>App: model progress event with engine="stt"
+  Worker-->>STT: ready
+  STT-->>Voice: model active
+  Voice-->>Cmd: download response with engine="stt"
+  Cmd-->>JS: response
+  JS-->>App: response

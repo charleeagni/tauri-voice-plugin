@@ -1,0 +1,27 @@
+graph LR
+  Consumer["Consumer App"]
+  GuestJs["guest-js voice API"]
+  TauriNamespace["plugin:voice command namespace"]
+  VoiceState["TauriPluginVoice managed state"]
+  Bootstrap["Shared Python bootstrap"]
+  SttState["STT engine state"]
+  TtsState["TTS engine placeholder"]
+  RecorderBridge["Recorder bridge"]
+  SttWorker["Persistent STT worker.py"]
+  PythonEnv["APP_DATA_DIR/python/.venv"]
+  Permissions["voice:* permissions"]
+  Progress["tauri-voice-plugin://model-progress"]
+
+  Consumer --> GuestJs
+  GuestJs --> TauriNamespace
+  Permissions --> TauriNamespace
+  TauriNamespace --> VoiceState
+  VoiceState --> Bootstrap
+  Bootstrap --> PythonEnv
+  VoiceState --> SttState
+  VoiceState --> TtsState
+  VoiceState --> RecorderBridge
+  SttState --> SttWorker
+  SttWorker --> Progress
+  TtsState -. "no worker in this task" .-> VoiceState
+  RecorderBridge --> SttState

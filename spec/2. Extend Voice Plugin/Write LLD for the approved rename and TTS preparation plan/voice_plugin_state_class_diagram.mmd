@@ -1,0 +1,56 @@
+classDiagram
+  class TauriPluginVoice {
+    app
+    shared_bootstrap
+    stt_engine
+    tts_engine
+    pipeline_state
+    bootstrap_voice()
+    voice_health()
+    download_model()
+    transcribe_file()
+    setup_record_transcribe_pipeline()
+  }
+
+  class SharedBootstrapState {
+    python_env_path
+    diagnostics
+    bootstrap_status
+  }
+
+  class SttEngineState {
+    worker
+    download_in_progress
+    startup_preload_status
+    startup_error
+    active_model_id
+    spawn_worker()
+    stt_health()
+    transcribe_file_internal()
+  }
+
+  class TtsEngineState {
+    lifecycle_state
+    startup_preload_status
+    startup_error
+    active_model_id
+  }
+
+  class PipelineRuntimeState {
+    configured_once
+    listener_id
+    config
+  }
+
+  class SttWorker {
+    child
+    stdin
+    rx
+    model_id
+  }
+
+  TauriPluginVoice *-- SharedBootstrapState
+  TauriPluginVoice *-- SttEngineState
+  TauriPluginVoice *-- TtsEngineState
+  TauriPluginVoice *-- PipelineRuntimeState
+  SttEngineState *-- SttWorker
