@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-voice-health"
+description = "Enables the voice_health command without any pre-configured scope."
+commands.allow = ["voice_health"]
+
+[[permission]]
+identifier = "deny-voice-health"
+description = "Denies the voice_health command without any pre-configured scope."
+commands.deny = ["voice_health"]

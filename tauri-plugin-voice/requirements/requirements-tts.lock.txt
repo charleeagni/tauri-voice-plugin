@@ -1,0 +1,6 @@
+# TTS runtime dependencies.
+# Keep separate from the STT lock until coexistence is validated.
+numpy<2
+mlx-audio[tts]==0.4.3
+misaki[en]==0.6.1
+en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl

@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```
 voice_plugin/
-├── tauri-plugin-stt/          # Main plugin package (Rust + TypeScript)
+├── tauri-plugin-voice/          # Main plugin package (Rust + TypeScript)
 │   ├── src/                   # Rust source
 │   │   ├── lib.rs             # Plugin entry point and trait ext
 │   │   ├── commands.rs        # Tauri command handlers
@@ -40,10 +40,10 @@ voice_plugin/
 
 ### Plugin Layer (Rust)
 - **Commands**: Handler functions invoked from JavaScript via Tauri. All commands are async.
-  - **STT commands**: `bootstrap_stt`, `transcribe_file`, `stt_health`, `setup_record_transcribe_pipeline`
+  - **Voice commands**: `bootstrap_voice`, `transcribe_file`, `voice_health`, `setup_record_transcribe_pipeline`
   - **Recorder bridge commands**: `initialize_recorder_runtime`, `start_recording`, `stop_recording`, etc. (conditionally compiled with `recorder-bridge` feature)
 - **Feature gates**: `recorder-bridge` (default-enabled) controls whether the plugin can proxy recorder commands.
-- **Plugin state**: Managed via Tauri's state system; accessible via `app.tauri_plugin_stt()` extension trait.
+- **Plugin state**: Managed via Tauri state; accessible via `app.tauri_plugin_voice()`.
 
 ### Transcription Workflow
 1. Bootstrap: Creates Python venv and installs locked dependencies (`requirements-stt.lock.txt`).
@@ -57,7 +57,7 @@ voice_plugin/
 - **Overlay coordination**: Displays 2-second transcript after transcription via event channel.
 
 ### TypeScript/JavaScript Frontend
-- **guest-js/index.ts**: Exports command wrappers (`bootstrapStt()`, `transcribeFile()`, etc.) and event listener helpers.
+- **guest-js/index.ts**: Exports command wrappers (`bootstrapVoice()`, `transcribeFile()`, etc.) and event listener helpers.
 - Built via rollup into ESM and CJS in `dist-js/`.
 - Consumed as a local npm dependency in target apps.
 
@@ -67,13 +67,13 @@ voice_plugin/
 
 #### Rust backend:
 ```bash
-cd tauri-plugin-stt
+cd tauri-plugin-voice
 cargo build
 ```
 
 #### TypeScript frontend:
 ```bash
-cd tauri-plugin-stt
+cd tauri-plugin-voice
 pnpm install
 pnpm build
 ```
@@ -84,27 +84,27 @@ Both must be built for integration into host apps.
 
 #### Smoke contract tests (validate payload shapes):
 ```bash
-cd tauri-plugin-stt
+cd tauri-plugin-voice
 cargo test --test smoke_contract
 ```
 
 #### Run the example Tauri app:
 ```bash
-cd tauri-plugin-stt/examples/tauri-app
+cd tauri-plugin-voice/examples/tauri-app
 pnpm install
 pnpm tauri dev
 ```
 
 ### Run a Single Test
 ```bash
-cd tauri-plugin-stt
+cd tauri-plugin-voice
 cargo test --test smoke_contract <test_name> -- --nocapture
 ```
 
 ### Lint & Check
 
 ```bash
-cd tauri-plugin-stt
+cd tauri-plugin-voice
 cargo clippy
 cargo fmt --check
 pnpm run build  # (runs rollup, reports TypeScript errors)
@@ -183,12 +183,12 @@ Highest priority: readability. Do not extend functionality, integrate new interf
 
 ## Files to Check First
 
-- `tauri-plugin-stt/README.md` — platform constraints, plugin commands, clean-machine bootstrap.
-- `tauri-plugin-stt/USAGE.md` — integration examples, frontend API examples.
-- `tauri-plugin-stt/src/lib.rs` — plugin entry, trait extensions.
-- `tauri-plugin-stt/src/commands.rs` — command handlers.
-- `tauri-plugin-stt/guest-js/index.ts` — TypeScript types and contract.
-- `tauri-plugin-stt/src/models.rs` — request/response structs.
+- `tauri-plugin-voice/README.md` — platform constraints, plugin commands, clean-machine bootstrap.
+- `tauri-plugin-voice/USAGE.md` — integration examples, frontend API examples.
+- `tauri-plugin-voice/src/lib.rs` — plugin entry, trait extensions.
+- `tauri-plugin-voice/src/commands.rs` — command handlers.
+- `tauri-plugin-voice/guest-js/index.ts` — TypeScript types and contract.
+- `tauri-plugin-voice/src/models.rs` — request/response structs.
 
 ## Available Skills
 

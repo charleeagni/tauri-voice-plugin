@@ -1,0 +1,20 @@
+[default]
+description = "Default permissions for the plugin"
+permissions = [
+    "allow-bootstrap-voice",
+    "allow-download-model",
+    "allow-transcribe-file",
+    "allow-synthesize-speech",
+    "allow-voice-health",
+    "allow-setup-record-transcribe-pipeline",
+    "allow-initialize-recorder-runtime",
+    "allow-start-recording",
+    "allow-stop-recording",
+    "allow-set-hotkey-bindings",
+    "allow-capture-hotkey",
+    "allow-get-runtime-state",
+    "allow-set-output-destination",
+    "allow-get-output-destination",
+    "allow-set-overlay-mode",
+    "allow-get-overlay-mode"
+]
