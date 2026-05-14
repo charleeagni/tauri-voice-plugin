@@ -20,6 +20,8 @@ Default permissions for the plugin
 - `allow-get-output-destination`
 - `allow-set-overlay-mode`
 - `allow-get-overlay-mode`
+- `allow-stream-speech`
+- `allow-cancel-speech`
 
 ## Permission Table
 
@@ -52,6 +54,32 @@ Enables the bootstrap_voice command without any pre-configured scope.
 <td>
 
 Denies the bootstrap_voice command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`voice:allow-cancel-speech`
+
+</td>
+<td>
+
+Enables the cancel_speech command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`voice:deny-cancel-speech`
+
+</td>
+<td>
+
+Denies the cancel_speech command without any pre-configured scope.
 
 </td>
 </tr>
@@ -364,6 +392,32 @@ Enables the stop_recording command without any pre-configured scope.
 <td>
 
 Denies the stop_recording command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`voice:allow-stream-speech`
+
+</td>
+<td>
+
+Enables the stream_speech command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`voice:deny-stream-speech`
+
+</td>
+<td>
+
+Denies the stream_speech command without any pre-configured scope.
 
 </td>
 </tr>

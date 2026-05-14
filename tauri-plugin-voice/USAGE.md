@@ -1,6 +1,6 @@
 # Tauri Voice Plugin Usage Guide
 
-This plugin (`tauri-plugin-voice`) provides standalone Speech-to-Text (STT), first local file-output Text-to-Speech (TTS), and a bridge for the `tauri-plugin-recorder`. By using the voice plugin, target applications can natively access transcription, synthesis, and recording/hotkey features without configuring the recorder plugin separately.
+This plugin (`tauri-plugin-voice`) provides standalone Speech-to-Text (STT), local Text-to-Speech (TTS) with both file-output and streaming modes, and a bridge for the `tauri-plugin-recorder`. By using the voice plugin, target applications can natively access transcription, synthesis, and recording/hotkey features without configuring the recorder plugin separately.
 
 ## Integration Steps
 
@@ -117,8 +117,8 @@ async function initializeAppVoice() {
 }
 ```
 
-### Local TTS Example
-Generate a WAV file from text with the default Kokoro model and voice.
+### File-Output TTS Example
+Generate a WAV file from text using the default Kokoro model and voice. This is the stable fallback path for durable audio or environments without Web Audio.
 
 ```typescript
 import { bootstrapVoice, synthesizeSpeech } from 'tauri-plugin-voice-api';
@@ -138,7 +138,75 @@ async function createSpeechFile() {
 }
 ```
 
-TTS v1 writes WAV files only. It does not play audio directly, stream chunks, clone voices, or manage conversation turns.
+File-output TTS writes one WAV file per request. It does not play audio directly, stream chunks, clone voices, or manage conversation turns.
+
+### Streaming TTS Example
+Play synthesized Kokoro audio in real time through Web Audio, without writing a file to disk.
+
+```typescript
+import { bootstrapVoice, playStreamedSpeech } from 'tauri-plugin-voice-api';
+
+async function speakStreamed() {
+  await bootstrapVoice();
+
+  const handle = await playStreamedSpeech({
+    text: "Hello from Kokoro streaming TTS.",
+    voiceId: "af_heart",
+    languageCode: "a",
+    speed: 1.0,
+    chunkDurationMs: 200,
+  });
+
+  // Cancel mid-stream if needed.
+  // await handle.cancel();
+}
+```
+
+`playStreamedSpeech` buffers 400 ms of audio before starting playback and schedules subsequent chunks against the `AudioContext` clock. It returns a handle with a `cancel()` function that stops future buffer scheduling and calls `cancelSpeech` on the active synthesis.
+
+### Raw Stream Event Example
+Subscribe to stream events directly when you need custom playback logic.
+
+```typescript
+import {
+  bootstrapVoice,
+  streamSpeech,
+  cancelSpeech,
+  listenToTtsStream,
+  type TtsStreamEvent,
+} from 'tauri-plugin-voice-api';
+
+async function rawStream() {
+  await bootstrapVoice();
+
+  const response = await streamSpeech({
+    text: "Custom stream handling.",
+    chunkDurationMs: 150,
+  });
+
+  const { synthesisId } = response;
+
+  const unlisten = await listenToTtsStream((event: TtsStreamEvent) => {
+    if (event.synthesisId !== synthesisId) return;
+
+    if (event.type === 'chunk' && event.audioBase64) {
+      // Decode and schedule event.audioBase64 (PCM16 LE, mono, 24 kHz).
+      console.log('Chunk', event.sequence, 'duration:', event.durationMs, 'ms');
+    }
+
+    if (event.type === 'complete' || event.type === 'error' || event.type === 'cancelled') {
+      unlisten();
+    }
+  });
+
+  // Cancel after 2 seconds.
+  setTimeout(() => cancelSpeech({ synthesisId }), 2000);
+}
+```
+
+Audio chunk format: base64-encoded PCM16 little-endian, mono, 24 000 Hz (`pcm_s16le`). The `sampleRateHz` and `channels` fields in each `chunk` event confirm the actual values.
+
+Cancellation stops Python chunk generation, Rust event forwarding, and (if using `playStreamedSpeech`) Web Audio scheduling consistently.
 
 ### Transcript Overlay Helper
 The guest-js provides an un-opinionated state helper for the 2-second transcript overlay requirement. Use it in your UI rendering components:

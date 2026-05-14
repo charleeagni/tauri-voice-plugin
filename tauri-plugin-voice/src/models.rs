@@ -137,6 +137,91 @@ pub struct SynthesizeSpeechResponse {
     pub created_at_ms: u64,
 }
 
+// -----------------------------------------------------------------------------
+// TTS Streaming Models
+// -----------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StreamSpeechRequest {
+    pub text: String,
+    pub model_id: Option<String>,
+    pub voice_id: Option<String>,
+    pub language_code: Option<String>,
+    pub speed: Option<f32>,
+
+    // PCM chunk length in milliseconds; defaults to 200.
+    pub chunk_duration_ms: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StreamSpeechResponse {
+    pub synthesis_id: String,
+    pub model_id: String,
+    pub voice_id: String,
+    pub language_code: Option<String>,
+
+    // Always "pcm_s16le" for MVP.
+    pub format: String,
+    pub sample_rate_hz: u32,
+    pub channels: u16,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CancelSpeechRequest {
+    pub synthesis_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CancelSpeechResponse {
+    pub synthesis_id: String,
+
+    // True when an active stream was cancelled.
+    pub cancelled: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum TtsStreamEventType {
+    Start,
+    Chunk,
+    Complete,
+    Error,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TtsStreamEvent {
+    pub contract_version: String,
+    pub event_id: String,
+    pub emitted_at_ms: u64,
+    pub synthesis_id: String,
+    pub sequence: u64,
+
+    // Serialized as "type" in JSON.
+    #[serde(rename = "type")]
+    pub event_type: TtsStreamEventType,
+
+    pub model_id: Option<String>,
+    pub voice_id: Option<String>,
+    pub language_code: Option<String>,
+    pub sample_rate_hz: Option<u32>,
+    pub channels: Option<u16>,
+    pub format: Option<String>,
+    pub audio_base64: Option<String>,
+    pub duration_ms: Option<u32>,
+
+    // Serialized as "final" in JSON.
+    #[serde(rename = "final")]
+    pub final_chunk: bool,
+
+    pub error: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SetupRecordTranscribePipelineRequest {

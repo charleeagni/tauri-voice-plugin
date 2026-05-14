@@ -67,6 +67,26 @@ pub(crate) async fn setup_record_transcribe_pipeline<R: Runtime>(
 }
 
 // -----------------------------------------------------------------------------
+// TTS Streaming Commands
+// -----------------------------------------------------------------------------
+
+#[command]
+pub(crate) async fn stream_speech<R: Runtime>(
+    app: AppHandle<R>,
+    payload: StreamSpeechRequest,
+) -> Result<StreamSpeechResponse> {
+    app.tauri_plugin_voice().stream_speech(payload).await
+}
+
+#[command]
+pub(crate) async fn cancel_speech<R: Runtime>(
+    app: AppHandle<R>,
+    payload: CancelSpeechRequest,
+) -> Result<CancelSpeechResponse> {
+    app.tauri_plugin_voice().cancel_speech(payload)
+}
+
+// -----------------------------------------------------------------------------
 // Recorder Bridge Commands
 // -----------------------------------------------------------------------------
 

@@ -38,6 +38,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R, Config> {
             commands::download_model,
             commands::transcribe_file,
             commands::synthesize_speech,
+            commands::stream_speech,
+            commands::cancel_speech,
             commands::voice_health,
             commands::setup_record_transcribe_pipeline,
             commands::initialize_recorder_runtime,

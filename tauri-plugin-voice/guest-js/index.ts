@@ -83,6 +83,68 @@ export interface SynthesizeSpeechResponse {
   createdAtMs: number;
 }
 
+// -------------------------
+// TTS Streaming Models
+// -------------------------
+
+export interface StreamSpeechRequest {
+  text: string;
+  modelId?: string;
+  voiceId?: string;
+  languageCode?: string;
+  speed?: number;
+  /** PCM chunk length in milliseconds (50–1000; default 200). */
+  chunkDurationMs?: number;
+}
+
+export interface StreamSpeechResponse {
+  synthesisId: string;
+  modelId: string;
+  voiceId: string;
+  languageCode?: string | null;
+  /** Always "pcm_s16le" for MVP. */
+  format: string;
+  sampleRateHz: number;
+  channels: number;
+}
+
+export interface CancelSpeechRequest {
+  synthesisId: string;
+}
+
+export interface CancelSpeechResponse {
+  synthesisId: string;
+  /** True when an active stream was cancelled. */
+  cancelled: boolean;
+}
+
+export type TtsStreamEventType = "start" | "chunk" | "complete" | "error" | "cancelled";
+
+export interface TtsStreamEvent {
+  contractVersion: string;
+  eventId: string;
+  emittedAtMs: number;
+  synthesisId: string;
+  sequence: number;
+  type: TtsStreamEventType;
+  modelId?: string | null;
+  voiceId?: string | null;
+  languageCode?: string | null;
+  sampleRateHz?: number | null;
+  channels?: number | null;
+  format?: string | null;
+  audioBase64?: string | null;
+  durationMs?: number | null;
+  /** True for the last chunk before complete. */
+  final: boolean;
+  error?: string | null;
+}
+
+/** Handle returned by playStreamedSpeech to cancel active playback. */
+export interface StreamPlaybackHandle {
+  cancel: () => Promise<void>;
+}
+
 export interface SetupRecordTranscribePipelineRequest {
   toggleShortcut: string;
   recorderConfig?: RecorderConfig;
@@ -312,6 +374,144 @@ export async function synthesizeSpeech(
 }
 
 /**
+ * Starts a streaming TTS synthesis request.
+ *
+ * Returns immediately with a synthesisId. Audio chunks arrive via the
+ * tauri-voice-plugin://tts-stream event channel until complete, error, or
+ * cancellation.
+ *
+ * :param payload: Text and synthesis parameters.
+ * :return: Synthesis session metadata including the synthesisId.
+ */
+export async function streamSpeech(
+  payload: StreamSpeechRequest,
+): Promise<StreamSpeechResponse> {
+  return await invoke("plugin:voice|stream_speech", { payload });
+}
+
+/**
+ * Cancels an active streaming synthesis by ID.
+ *
+ * :param payload: synthesisId to cancel.
+ * :return: Whether an active stream was cancelled.
+ */
+export async function cancelSpeech(
+  payload: CancelSpeechRequest,
+): Promise<CancelSpeechResponse> {
+  return await invoke("plugin:voice|cancel_speech", { payload });
+}
+
+/**
+ * Subscribes to raw TTS stream events from the Rust bridge.
+ *
+ * :param onEvent: Callback for each incoming TtsStreamEvent.
+ * :return: A teardown function that removes the listener.
+ */
+export async function listenToTtsStream(
+  onEvent: (event: TtsStreamEvent) => void,
+): Promise<() => void> {
+  return await listen<TtsStreamEvent>(CHANNELS.TTS_STREAM, (e) => {
+    onEvent(e.payload);
+  });
+}
+
+/** Initial guest buffer before playback starts (milliseconds). */
+const STREAM_BUFFER_START_MS = 400;
+
+/**
+ * Synthesizes a Kokoro phrase and plays it through Web Audio.
+ *
+ * Buffers at least STREAM_BUFFER_START_MS of PCM before scheduling playback.
+ * Exposes a cancel() handle that stops further scheduling and calls cancelSpeech.
+ *
+ * :param request: Text and synthesis options.
+ * :return: A handle with a cancel() function.
+ * :raises Error: When streamSpeech fails to start.
+ */
+export async function playStreamedSpeech(
+  request: StreamSpeechRequest,
+): Promise<StreamPlaybackHandle> {
+  const ctx = new AudioContext();
+  const response = await streamSpeech(request);
+  const { synthesisId, sampleRateHz, channels } = response;
+
+  // Ordered chunk queue for scheduling against AudioContext clock.
+  const chunkQueue: Float32Array<ArrayBuffer>[] = [];
+  let nextStartTime = 0;
+  let bufferedMs = 0;
+  let playbackStarted = false;
+  let done = false;
+  let cancelled = false;
+
+  function decodePcm16(base64: string): Float32Array<ArrayBuffer> {
+    // Decode base64 → raw bytes → PCM16 int16 → float32 normalised.
+    const binary = atob(base64);
+    const raw = new ArrayBuffer(binary.length);
+    const bytes = new Uint8Array(raw);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const int16 = new Int16Array(raw);
+    const float32 = new Float32Array(int16.length);
+    for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 32768;
+    return float32;
+  }
+
+  function scheduleChunk(samples: Float32Array<ArrayBuffer>) {
+    const buffer = ctx.createBuffer(channels, samples.length, sampleRateHz);
+    buffer.copyToChannel(samples, 0);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+
+    // Schedule back-to-back; restart from now if underrun.
+    const startAt = Math.max(ctx.currentTime, nextStartTime);
+    source.start(startAt);
+    nextStartTime = startAt + buffer.duration;
+  }
+
+  function flushQueue() {
+    for (const chunk of chunkQueue) scheduleChunk(chunk);
+    chunkQueue.length = 0;
+  }
+
+  const unlisten = await listenToTtsStream((event) => {
+    if (event.synthesisId !== synthesisId || cancelled) return;
+
+    if (event.type === "chunk" && event.audioBase64) {
+      const samples = decodePcm16(event.audioBase64);
+      const chunkMs = (samples.length / sampleRateHz) * 1000;
+      bufferedMs += chunkMs;
+
+      if (!playbackStarted) {
+        chunkQueue.push(samples);
+        // Start once enough is buffered or the final chunk has arrived.
+        if (bufferedMs >= STREAM_BUFFER_START_MS || event.final) {
+          playbackStarted = true;
+          nextStartTime = ctx.currentTime;
+          flushQueue();
+        }
+      } else {
+        scheduleChunk(samples);
+      }
+    }
+
+    if (event.type === "complete" || event.type === "error" || event.type === "cancelled") {
+      done = true;
+      unlisten();
+    }
+  });
+
+  return {
+    async cancel() {
+      if (done || cancelled) return;
+      cancelled = true;
+      unlisten();
+      ctx.suspend();
+      await cancelSpeech({ synthesisId });
+    },
+  };
+}
+
+/**
  * Gets the health status of the STT engine.
  *
  * :param payload: Health check request.
@@ -480,6 +680,7 @@ export const CHANNELS = {
   COMPLETE: "tauri-audio-plugin://complete",
   LIVE: "tauri-audio-plugin://live",
   PROGRESS: "tauri-voice-plugin://model-progress",
+  TTS_STREAM: "tauri-voice-plugin://tts-stream",
 } as const;
 
 export interface StateEvent {

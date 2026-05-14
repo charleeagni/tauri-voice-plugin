@@ -16,5 +16,7 @@ permissions = [
     "allow-set-output-destination",
     "allow-get-output-destination",
     "allow-set-overlay-mode",
-    "allow-get-overlay-mode"
+    "allow-get-overlay-mode",
+    "allow-stream-speech",
+    "allow-cancel-speech"
 ]

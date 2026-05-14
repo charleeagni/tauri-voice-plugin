@@ -26,9 +26,17 @@ const TTS_MAX_TEXT_CHARS: usize = 5000;
 const TTS_OUTPUT_SUBDIR: &str = "tts/output";
 const TTS_FORMAT: &str = "wav";
 const PROGRESS_CHANNEL: &str = "tauri-voice-plugin://model-progress";
+const TTS_STREAM_CHANNEL: &str = "tauri-voice-plugin://tts-stream";
 const COMPLETE_CHANNEL: &str = "tauri-audio-plugin://complete";
 const STATE_CHANNEL: &str = "tauri-audio-plugin://state";
 const LIVE_CHANNEL: &str = "tauri-audio-plugin://live";
+
+const DEFAULT_STREAM_FORMAT: &str = "pcm_s16le";
+const DEFAULT_STREAM_SAMPLE_RATE_HZ: u32 = 24000;
+const DEFAULT_STREAM_CHANNELS: u16 = 1;
+const DEFAULT_CHUNK_DURATION_MS: u32 = 200;
+const MIN_CHUNK_DURATION_MS: u32 = 50;
+const MAX_CHUNK_DURATION_MS: u32 = 1000;
 
 const ALLOWLISTED_MODELS: &[&str] = &[
     "tiny",
@@ -107,6 +115,15 @@ struct TtsEngineState {
     startup_error: Arc<Mutex<Option<String>>>,
     startup_preload_status: Arc<Mutex<StartupPreloadStatus>>,
     active_model_id: Arc<Mutex<Option<String>>>,
+
+    // Active streaming synthesis ID; None when idle.
+    active_stream_id: Arc<Mutex<Option<String>>>,
+
+    // Set to true when cancel_speech is called for the active stream.
+    stream_cancelled: Arc<Mutex<bool>>,
+
+    // Sender for routing stream_* worker lines to the stream-reader thread.
+    stream_line_tx: Arc<Mutex<Option<mpsc::Sender<String>>>>,
 }
 
 impl Default for TtsEngineState {
@@ -117,6 +134,9 @@ impl Default for TtsEngineState {
             startup_error: Arc::new(Mutex::new(None)),
             startup_preload_status: Arc::new(Mutex::new(StartupPreloadStatus::Idle)),
             active_model_id: Arc::new(Mutex::new(None)),
+            active_stream_id: Arc::new(Mutex::new(None)),
+            stream_cancelled: Arc::new(Mutex::new(false)),
+            stream_line_tx: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -592,40 +612,53 @@ impl<R: Runtime> TauriPluginVoice<R> {
 
         let (tx, rx) = mpsc::channel::<String>();
         let app_handle = self.app.clone();
+
+        // Route stream_* lines to stream_line_tx; all others to tx.
+        let stream_line_tx_arc = Arc::clone(&self.tts.stream_line_tx);
         std::thread::spawn(move || {
             let reader = std::io::BufReader::new(stdout);
             for line in reader.lines() {
                 match line {
                     Ok(line) => {
-                        let is_progress = serde_json::from_str::<serde_json::Value>(&line)
+                        let status = serde_json::from_str::<serde_json::Value>(&line)
                             .ok()
-                            .and_then(|value| {
-                                value
-                                    .get("status")
-                                    .and_then(|status| status.as_str())
-                                    .map(|status| status == "progress")
-                            })
-                            .unwrap_or(false);
+                            .and_then(|v| {
+                                v.get("status").and_then(|s| s.as_str()).map(|s| s.to_string())
+                            });
 
-                        if is_progress {
-                            if let Ok(line) = serde_json::from_str::<WorkerProgressLine>(&line) {
-                                let now = now_ms();
-                                let event = ModelProgressEvent {
-                                    contract_version: CONTRACT_VERSION.to_string(),
-                                    event_id: format!("progress-{}", now),
-                                    emitted_at_ms: now,
-                                    engine: Engine::Tts,
-                                    model: line.model,
-                                    phase: line.phase,
-                                    state: line.state,
-                                    percent: line.percent,
-                                    filename: line.filename,
-                                    error: line.error,
-                                };
-                                let _ = app_handle.emit(PROGRESS_CHANNEL, event);
+                        match status.as_deref() {
+                            Some("progress") => {
+                                if let Ok(progress) =
+                                    serde_json::from_str::<WorkerProgressLine>(&line)
+                                {
+                                    let now = now_ms();
+                                    let event = ModelProgressEvent {
+                                        contract_version: CONTRACT_VERSION.to_string(),
+                                        event_id: format!("progress-{}", now),
+                                        emitted_at_ms: now,
+                                        engine: Engine::Tts,
+                                        model: progress.model,
+                                        phase: progress.phase,
+                                        state: progress.state,
+                                        percent: progress.percent,
+                                        filename: progress.filename,
+                                        error: progress.error,
+                                    };
+                                    let _ = app_handle.emit(PROGRESS_CHANNEL, event);
+                                }
                             }
-                        } else if tx.send(line).is_err() {
-                            break;
+                            Some(s) if s.starts_with("stream_") => {
+                                // Route to stream reader thread if active.
+                                let guard = stream_line_tx_arc.lock().unwrap();
+                                if let Some(ref stream_tx) = *guard {
+                                    let _ = stream_tx.send(line);
+                                }
+                            }
+                            _ => {
+                                if tx.send(line).is_err() {
+                                    break;
+                                }
+                            }
                         }
                     }
                     Err(_) => break,
@@ -901,6 +934,13 @@ impl<R: Runtime> TauriPluginVoice<R> {
         &self,
         payload: SynthesizeSpeechRequest,
     ) -> crate::Result<SynthesizeSpeechResponse> {
+        // Reject if a streaming synthesis is active.
+        if self.tts.active_stream_id.lock().unwrap().is_some() {
+            return Err(crate::Error::not_ready(
+                "A streaming synthesis is active; cancel it before calling synthesizeSpeech",
+            ));
+        }
+
         let request = self.resolve_synthesis_request(payload)?;
 
         {
@@ -935,6 +975,356 @@ impl<R: Runtime> TauriPluginVoice<R> {
         }
 
         self.send_tts_request(request)
+    }
+
+    pub async fn stream_speech(
+        &self,
+        payload: StreamSpeechRequest,
+    ) -> crate::Result<StreamSpeechResponse> {
+        // Validate common TTS fields.
+        let text = payload.text.trim().to_string();
+        if text.is_empty() {
+            return Err(crate::Error::invalid_input("text is required"));
+        }
+        if text.chars().count() > TTS_MAX_TEXT_CHARS {
+            return Err(crate::Error::invalid_input("text exceeds the maximum length"));
+        }
+
+        let model_id = payload
+            .model_id
+            .unwrap_or_else(|| DEFAULT_TTS_MODEL.to_string());
+        if !ALLOWLISTED_TTS_MODELS.contains(&model_id.as_str()) {
+            return Err(crate::Error::invalid_input(
+                "Invalid or unsupported TTS model ID",
+            ));
+        }
+
+        let voice_id = payload
+            .voice_id
+            .unwrap_or_else(|| DEFAULT_TTS_VOICE.to_string());
+        if !ALLOWLISTED_TTS_VOICES.contains(&voice_id.as_str()) {
+            return Err(crate::Error::invalid_input(
+                "Invalid or unsupported TTS voice ID",
+            ));
+        }
+
+        let language_code = payload
+            .language_code
+            .unwrap_or_else(|| DEFAULT_TTS_LANGUAGE.to_string());
+        if !ALLOWLISTED_TTS_LANGUAGES.contains(&language_code.as_str()) {
+            return Err(crate::Error::invalid_input(
+                "Invalid or unsupported TTS language code",
+            ));
+        }
+
+        let speed = payload.speed.unwrap_or(DEFAULT_TTS_SPEED);
+        if !(0.5..=2.0).contains(&speed) {
+            return Err(crate::Error::invalid_input(
+                "speed must be between 0.5 and 2.0",
+            ));
+        }
+
+        let chunk_duration_ms = payload
+            .chunk_duration_ms
+            .unwrap_or(DEFAULT_CHUNK_DURATION_MS)
+            .clamp(MIN_CHUNK_DURATION_MS, MAX_CHUNK_DURATION_MS);
+
+        // Reject if another stream is already active.
+        if self.tts.active_stream_id.lock().unwrap().is_some() {
+            return Err(crate::Error::not_ready(
+                "A streaming synthesis is already active; cancel it before starting a new one",
+            ));
+        }
+
+        // Spawn or reuse the TTS worker.
+        {
+            let mut worker_guard = self.tts.worker.lock().expect("tts worker mutex poisoned");
+            let needs_spawn = worker_guard
+                .as_ref()
+                .map(|w| w.model_id != model_id)
+                .unwrap_or(true);
+
+            if needs_spawn {
+                *worker_guard = None;
+                *self.tts.lifecycle_state.lock().unwrap() = LifecycleState::Initializing;
+                match self.spawn_tts_worker(&model_id) {
+                    Ok(worker) => {
+                        *worker_guard = Some(worker);
+                        *self.tts.active_model_id.lock().unwrap() = Some(model_id.clone());
+                        *self.tts.startup_error.lock().unwrap() = None;
+                        *self.tts.startup_preload_status.lock().unwrap() =
+                            StartupPreloadStatus::Ready;
+                        *self.tts.lifecycle_state.lock().unwrap() = LifecycleState::Ready;
+                    }
+                    Err(err) => {
+                        let msg = err.to_string();
+                        *self.tts.startup_error.lock().unwrap() = Some(msg);
+                        *self.tts.startup_preload_status.lock().unwrap() =
+                            StartupPreloadStatus::Failed;
+                        *self.tts.lifecycle_state.lock().unwrap() = LifecycleState::Failed;
+                        return Err(err);
+                    }
+                }
+            }
+        }
+
+        let synthesis_id = format!("syn-{}", now_ms());
+
+        // Install routing channel before writing to stdin.
+        let (line_tx, line_rx) = mpsc::channel::<String>();
+        *self.tts.stream_line_tx.lock().unwrap() = Some(line_tx);
+        *self.tts.active_stream_id.lock().unwrap() = Some(synthesis_id.clone());
+        *self.tts.stream_cancelled.lock().unwrap() = false;
+
+        // Write stream request to worker stdin.
+        {
+            let mut worker_guard = self.tts.worker.lock().expect("tts worker mutex poisoned");
+            let worker = worker_guard.as_mut().ok_or_else(|| {
+                crate::Error::not_ready("TTS worker not initialized")
+            })?;
+            let req_line = serde_json::json!({
+                "id": synthesis_id,
+                "mode": "stream",
+                "text": text,
+                "model": model_id,
+                "voice": voice_id,
+                "language": language_code,
+                "speed": speed,
+                "chunk_duration_ms": chunk_duration_ms,
+            })
+            .to_string();
+            if let Err(e) = writeln!(worker.stdin, "{}", req_line) {
+                *worker_guard = None;
+                *self.tts.lifecycle_state.lock().unwrap() = LifecycleState::Failed;
+                *self.tts.active_stream_id.lock().unwrap() = None;
+                *self.tts.stream_line_tx.lock().unwrap() = None;
+                return Err(crate::Error::generation_failed(format!(
+                    "Failed to write stream request to TTS worker stdin: {e}"
+                )));
+            }
+            if let Err(e) = worker.stdin.flush() {
+                *worker_guard = None;
+                *self.tts.lifecycle_state.lock().unwrap() = LifecycleState::Failed;
+                *self.tts.active_stream_id.lock().unwrap() = None;
+                *self.tts.stream_line_tx.lock().unwrap() = None;
+                return Err(crate::Error::generation_failed(format!(
+                    "Failed to flush TTS worker stdin: {e}"
+                )));
+            }
+        }
+
+        // Spawn background thread that reads stream lines and emits Tauri events.
+        let app = self.app.clone();
+        let active_stream_id = Arc::clone(&self.tts.active_stream_id);
+        let stream_cancelled = Arc::clone(&self.tts.stream_cancelled);
+        let stream_line_tx = Arc::clone(&self.tts.stream_line_tx);
+        let synthesis_id_bg = synthesis_id.clone();
+
+        std::thread::spawn(move || {
+            let mut sequence: u64 = 0;
+
+            loop {
+                // 120 s total stream timeout.
+                let result = line_rx.recv_timeout(Duration::from_secs(120));
+
+                match result {
+                    Ok(line) => {
+                        // Drop lines for a cancelled synthesis.
+                        if *stream_cancelled.lock().unwrap() {
+                            break;
+                        }
+
+                        let val: serde_json::Value = match serde_json::from_str(&line) {
+                            Ok(v) => v,
+                            Err(_) => continue,
+                        };
+
+                        let status =
+                            val.get("status").and_then(|s| s.as_str()).unwrap_or("");
+
+                        let event_type = match status {
+                            "stream_start" => TtsStreamEventType::Start,
+                            "stream_chunk" => TtsStreamEventType::Chunk,
+                            "stream_complete" => TtsStreamEventType::Complete,
+                            "stream_error" => TtsStreamEventType::Error,
+                            "stream_cancelled" => TtsStreamEventType::Cancelled,
+                            _ => continue,
+                        };
+
+                        let is_terminal = matches!(
+                            event_type,
+                            TtsStreamEventType::Complete
+                                | TtsStreamEventType::Error
+                                | TtsStreamEventType::Cancelled
+                        );
+
+                        let now = now_ms();
+                        let event = TtsStreamEvent {
+                            contract_version: CONTRACT_VERSION.to_string(),
+                            event_id: format!("tts-stream-{now}"),
+                            emitted_at_ms: now,
+                            synthesis_id: synthesis_id_bg.clone(),
+                            sequence,
+                            event_type,
+                            model_id: val
+                                .get("model")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string()),
+                            voice_id: val
+                                .get("voice")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string()),
+                            language_code: val
+                                .get("language")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string()),
+                            sample_rate_hz: val
+                                .get("sample_rate_hz")
+                                .and_then(|v| v.as_u64())
+                                .map(|v| v as u32),
+                            channels: val
+                                .get("channels")
+                                .and_then(|v| v.as_u64())
+                                .map(|v| v as u16),
+                            format: val
+                                .get("format")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string()),
+                            audio_base64: val
+                                .get("audio_base64")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string()),
+                            duration_ms: val
+                                .get("duration_ms")
+                                .and_then(|v| v.as_u64())
+                                .map(|v| v as u32),
+                            final_chunk: val
+                                .get("final")
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false),
+                            error: val
+                                .get("error")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string()),
+                        };
+
+                        sequence += 1;
+                        let _ = app.emit(TTS_STREAM_CHANNEL, event);
+
+                        if is_terminal {
+                            break;
+                        }
+                    }
+                    Err(_) => {
+                        // Timeout or sender dropped - emit error event.
+                        if !*stream_cancelled.lock().unwrap() {
+                            let now = now_ms();
+                            let event = TtsStreamEvent {
+                                contract_version: CONTRACT_VERSION.to_string(),
+                                event_id: format!("tts-stream-{now}"),
+                                emitted_at_ms: now,
+                                synthesis_id: synthesis_id_bg.clone(),
+                                sequence,
+                                event_type: TtsStreamEventType::Error,
+                                model_id: None,
+                                voice_id: None,
+                                language_code: None,
+                                sample_rate_hz: None,
+                                channels: None,
+                                format: None,
+                                audio_base64: None,
+                                duration_ms: None,
+                                final_chunk: false,
+                                error: Some("Stream timeout or worker disconnect".to_string()),
+                            };
+                            let _ = app.emit(TTS_STREAM_CHANNEL, event);
+                        }
+                        break;
+                    }
+                }
+            }
+
+            // Clear streaming state.
+            *active_stream_id.lock().unwrap() = None;
+            *stream_cancelled.lock().unwrap() = false;
+            *stream_line_tx.lock().unwrap() = None;
+        });
+
+        Ok(StreamSpeechResponse {
+            synthesis_id,
+            model_id,
+            voice_id,
+            language_code: Some(language_code),
+            format: DEFAULT_STREAM_FORMAT.to_string(),
+            sample_rate_hz: DEFAULT_STREAM_SAMPLE_RATE_HZ,
+            channels: DEFAULT_STREAM_CHANNELS,
+        })
+    }
+
+    pub fn cancel_speech(
+        &self,
+        payload: CancelSpeechRequest,
+    ) -> crate::Result<CancelSpeechResponse> {
+        let active_id = self.tts.active_stream_id.lock().unwrap().clone();
+
+        // Return false if this synthesis ID is not the active one.
+        if active_id.as_deref() != Some(payload.synthesis_id.as_str()) {
+            return Ok(CancelSpeechResponse {
+                synthesis_id: payload.synthesis_id,
+                cancelled: false,
+            });
+        }
+
+        // Mark cancelled before writing to worker to suppress incoming chunks.
+        *self.tts.stream_cancelled.lock().unwrap() = true;
+
+        // Send cancel request to the worker.
+        let cancel_sent = {
+            let mut worker_guard = self.tts.worker.lock().expect("tts worker mutex poisoned");
+            if let Some(ref mut worker) = *worker_guard {
+                let cancel_line = serde_json::json!({
+                    "command": "cancel",
+                    "id": payload.synthesis_id,
+                })
+                .to_string();
+                writeln!(worker.stdin, "{}", cancel_line).is_ok()
+                    && worker.stdin.flush().is_ok()
+            } else {
+                false
+            }
+        };
+
+        // If worker is unavailable, emit cancelled event and clean up ourselves.
+        if !cancel_sent {
+            let now = now_ms();
+            let event = TtsStreamEvent {
+                contract_version: CONTRACT_VERSION.to_string(),
+                event_id: format!("tts-stream-{now}"),
+                emitted_at_ms: now,
+                synthesis_id: payload.synthesis_id.clone(),
+                sequence: 0,
+                event_type: TtsStreamEventType::Cancelled,
+                model_id: None,
+                voice_id: None,
+                language_code: None,
+                sample_rate_hz: None,
+                channels: None,
+                format: None,
+                audio_base64: None,
+                duration_ms: None,
+                final_chunk: false,
+                error: None,
+            };
+            let _ = self.app.emit(TTS_STREAM_CHANNEL, event);
+            *self.tts.active_stream_id.lock().unwrap() = None;
+            *self.tts.stream_cancelled.lock().unwrap() = false;
+            *self.tts.stream_line_tx.lock().unwrap() = None;
+        }
+
+        Ok(CancelSpeechResponse {
+            synthesis_id: payload.synthesis_id,
+            cancelled: true,
+        })
     }
 
     pub fn setup_record_transcribe_pipeline(
