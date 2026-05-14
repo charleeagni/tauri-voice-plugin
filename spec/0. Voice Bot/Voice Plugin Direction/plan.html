@@ -1,0 +1,1208 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Voice Plugin Interface Boundary — Plan</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,700;9..144,900&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d0f12;
+      --bg-soft: #13161b;
+      --surface: #1a1e25;
+      --surface-2: #222831;
+      --border: #2a303b;
+      --border-strong: #3a4150;
+      --text: #e8e6e1;
+      --text-muted: #9aa0ad;
+      --text-subtle: #6b7280;
+      --accent: #d4ff3c;
+      --accent-dim: #b8e028;
+      --accent-glow: rgba(212, 255, 60, 0.12);
+      --rust: #d97757;
+      --rust-bg: rgba(217, 119, 87, 0.10);
+      --ts: #7aa3e8;
+      --ts-bg: rgba(122, 163, 232, 0.10);
+      --example: #7dd3c6;
+      --example-bg: rgba(125, 211, 198, 0.10);
+      --validation: #c8b076;
+      --validation-bg: rgba(200, 176, 118, 0.08);
+
+      --serif: 'Fraunces', Georgia, serif;
+      --sans: 'IBM Plex Sans', system-ui, sans-serif;
+      --mono: 'IBM Plex Mono', ui-monospace, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+      font-weight: 400;
+      font-size: 15px;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      overflow-x: hidden;
+    }
+
+    /* Subtle grain overlay across page */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,0.025) 1px, transparent 0);
+      background-size: 28px 28px;
+      z-index: 1;
+    }
+
+    .page {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 56px 48px 96px;
+      position: relative;
+      z-index: 2;
+    }
+
+    /* ────────────────────────────────────────────
+       Top meta strip
+       ──────────────────────────────────────────── */
+    .topstrip {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border);
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text-muted);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .topstrip .left { display: flex; gap: 28px; align-items: baseline; }
+    .topstrip .dot {
+      display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+      background: var(--accent); box-shadow: 0 0 12px var(--accent-glow);
+      margin-right: 10px; vertical-align: middle;
+    }
+    .topstrip .right { color: var(--text-subtle); }
+
+    /* ────────────────────────────────────────────
+       Hero
+       ──────────────────────────────────────────── */
+    .hero {
+      padding: 100px 0 72px;
+      border-bottom: 1px solid var(--border);
+      position: relative;
+    }
+    .hero .eyebrow {
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 36px;
+    }
+    .hero h1 {
+      font-family: var(--serif);
+      font-weight: 400;
+      font-size: clamp(56px, 8.5vw, 124px);
+      line-height: 0.95;
+      letter-spacing: -0.035em;
+      font-variation-settings: "opsz" 144;
+      margin-bottom: 36px;
+      max-width: 1100px;
+    }
+    .hero h1 em {
+      font-style: italic;
+      font-weight: 300;
+      color: var(--text-muted);
+      font-variation-settings: "opsz" 144;
+    }
+    .hero h1 .punc {
+      color: var(--accent);
+      font-style: normal;
+    }
+    .hero .dek {
+      font-family: var(--serif);
+      font-weight: 300;
+      font-size: clamp(20px, 2vw, 26px);
+      line-height: 1.45;
+      letter-spacing: -0.01em;
+      color: var(--text-muted);
+      max-width: 720px;
+      font-variation-settings: "opsz" 36;
+    }
+    .hero .meta {
+      display: flex;
+      gap: 48px;
+      margin-top: 56px;
+      flex-wrap: wrap;
+    }
+    .hero .meta .stat {
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--text-subtle);
+    }
+    .hero .meta .stat strong {
+      display: block;
+      font-family: var(--serif);
+      font-weight: 500;
+      font-size: 40px;
+      line-height: 1;
+      letter-spacing: -0.02em;
+      color: var(--text);
+      text-transform: none;
+      margin-bottom: 6px;
+      font-variation-settings: "opsz" 60;
+    }
+    .hero .meta .stat strong .accent { color: var(--accent); }
+
+    /* ────────────────────────────────────────────
+       Principle pillars
+       ──────────────────────────────────────────── */
+    .pillars {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      margin: 0;
+      padding: 56px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .pillar {
+      padding: 0 48px;
+      border-left: 1px solid var(--border);
+    }
+    .pillar:first-child { border-left: none; padding-left: 0; }
+    .pillar .role {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--text-subtle);
+      margin-bottom: 16px;
+    }
+    .pillar h3 {
+      font-family: var(--serif);
+      font-weight: 400;
+      font-size: 36px;
+      line-height: 1.1;
+      letter-spacing: -0.025em;
+      margin-bottom: 18px;
+      font-variation-settings: "opsz" 60;
+    }
+    .pillar.plugin h3 .key { color: var(--accent); font-style: italic; font-weight: 300; }
+    .pillar.host h3 .key { color: var(--text-muted); font-style: italic; font-weight: 300; }
+    .pillar p {
+      color: var(--text-muted);
+      max-width: 460px;
+      font-size: 15px;
+      line-height: 1.7;
+    }
+    .pillar .owns {
+      margin-top: 22px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .pillar .owns span {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      padding: 5px 10px;
+      border: 1px solid var(--border-strong);
+      border-radius: 2px;
+      color: var(--text-muted);
+    }
+    .pillar.plugin .owns span { border-color: rgba(212, 255, 60, 0.25); color: var(--accent); }
+
+    /* ────────────────────────────────────────────
+       Section heading
+       ──────────────────────────────────────────── */
+    .section-head {
+      display: flex;
+      align-items: baseline;
+      gap: 28px;
+      padding: 72px 0 36px;
+    }
+    .section-head .num {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      color: var(--text-subtle);
+      text-transform: uppercase;
+    }
+    .section-head h2 {
+      font-family: var(--serif);
+      font-weight: 400;
+      font-size: clamp(36px, 4vw, 56px);
+      line-height: 1;
+      letter-spacing: -0.03em;
+      flex: 1;
+      font-variation-settings: "opsz" 96;
+    }
+    .section-head h2 em {
+      font-style: italic;
+      font-weight: 300;
+      color: var(--text-muted);
+    }
+    .section-head .rule {
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ────────────────────────────────────────────
+       State machine
+       ──────────────────────────────────────────── */
+    .state-machine {
+      background: var(--bg-soft);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 56px 40px 44px;
+      position: relative;
+    }
+    .state-machine .label {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--text-subtle);
+      margin-bottom: 36px;
+    }
+    .sm-svg { width: 100%; height: auto; display: block; }
+    .sm-legend {
+      display: flex;
+      gap: 28px;
+      flex-wrap: wrap;
+      margin-top: 36px;
+      padding-top: 28px;
+      border-top: 1px dashed var(--border);
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+    }
+    .sm-legend .item { display: flex; align-items: center; gap: 10px; }
+    .sm-legend .swatch {
+      width: 22px; height: 12px; border-radius: 2px;
+    }
+    .sm-legend .swatch.main { background: transparent; border: 1px solid var(--text-muted); }
+    .sm-legend .swatch.handoff { background: transparent; border: 1.5px solid var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
+    .sm-legend .swatch.terminal { background: transparent; border: 1px dashed var(--text-subtle); }
+    .sm-legend .swatch.declared { background: transparent; border: 1px dotted var(--example); }
+
+    /* ────────────────────────────────────────────
+       Locked scope panel
+       ──────────────────────────────────────────── */
+    .locked-scope {
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .locked-scope .head {
+      padding: 24px 32px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+    .locked-scope .head .title {
+      font-family: var(--serif);
+      font-weight: 400;
+      font-size: 22px;
+      letter-spacing: -0.02em;
+      font-variation-settings: "opsz" 36;
+    }
+    .locked-scope .head .meta {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-subtle);
+    }
+    .scope-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0;
+    }
+    .scope-item {
+      padding: 28px 32px;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      position: relative;
+    }
+    .scope-item:nth-child(3n) { border-right: none; }
+    .scope-item:nth-child(n+4) { border-bottom: none; }
+    .scope-item .idx {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      color: var(--accent);
+      margin-bottom: 14px;
+      display: block;
+    }
+    .scope-item h4 {
+      font-family: var(--serif);
+      font-weight: 500;
+      font-size: 18px;
+      line-height: 1.25;
+      letter-spacing: -0.015em;
+      margin-bottom: 10px;
+      font-variation-settings: "opsz" 24;
+    }
+    .scope-item p {
+      color: var(--text-muted);
+      font-size: 13.5px;
+      line-height: 1.6;
+    }
+    .scope-item p code {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text);
+      background: rgba(255,255,255,0.04);
+      padding: 1px 5px;
+      border-radius: 2px;
+    }
+
+    /* ────────────────────────────────────────────
+       Phases
+       ──────────────────────────────────────────── */
+    .phase {
+      margin-bottom: 56px;
+    }
+    .phase-header {
+      display: grid;
+      grid-template-columns: 80px 1fr auto;
+      gap: 32px;
+      align-items: end;
+      padding: 32px 0 24px;
+      border-bottom: 1px solid var(--border);
+    }
+    .phase-number {
+      font-family: var(--serif);
+      font-weight: 300;
+      font-size: 88px;
+      line-height: 0.85;
+      letter-spacing: -0.04em;
+      color: var(--text-muted);
+      font-variation-settings: "opsz" 144;
+    }
+    .phase-title {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .phase-title .kicker {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--text-subtle);
+    }
+    .phase-title h3 {
+      font-family: var(--serif);
+      font-weight: 400;
+      font-size: 36px;
+      line-height: 1.05;
+      letter-spacing: -0.025em;
+      font-variation-settings: "opsz" 60;
+    }
+    .phase-title p {
+      color: var(--text-muted);
+      font-size: 14.5px;
+      max-width: 580px;
+      margin-top: 6px;
+    }
+    .phase-range {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-subtle);
+      text-align: right;
+      padding-bottom: 8px;
+    }
+    .phase-range strong {
+      display: block;
+      font-family: var(--serif);
+      font-weight: 400;
+      font-size: 22px;
+      color: var(--text);
+      letter-spacing: -0.01em;
+      margin-bottom: 2px;
+      font-variation-settings: "opsz" 30;
+    }
+    .phase.headline .phase-title h3 .accent { color: var(--accent); font-style: italic; font-weight: 300; }
+
+    .slice-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1px;
+      margin-top: 32px;
+      background: var(--border);
+      border: 1px solid var(--border);
+    }
+
+    .slice {
+      background: var(--bg);
+      padding: 24px 24px 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      position: relative;
+      transition: background 0.3s ease;
+      min-height: 220px;
+    }
+    .slice:hover {
+      background: var(--bg-soft);
+    }
+    .slice .topline {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+    .slice .num {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      color: var(--text-subtle);
+      text-transform: uppercase;
+    }
+    .slice .num em {
+      font-style: normal;
+      color: var(--text);
+    }
+    .slice .chips {
+      display: flex;
+      gap: 5px;
+    }
+    .slice .chip {
+      font-family: var(--mono);
+      font-size: 9.5px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 2px;
+      font-weight: 500;
+    }
+    .chip.rust { background: var(--rust-bg); color: var(--rust); }
+    .chip.ts { background: var(--ts-bg); color: var(--ts); }
+    .chip.example { background: var(--example-bg); color: var(--example); }
+    .chip.validation { background: var(--validation-bg); color: var(--validation); }
+
+    .slice h4 {
+      font-family: var(--serif);
+      font-weight: 500;
+      font-size: 19px;
+      line-height: 1.2;
+      letter-spacing: -0.015em;
+      color: var(--text);
+      font-variation-settings: "opsz" 24;
+    }
+    .slice .goal {
+      font-size: 13.5px;
+      color: var(--text-muted);
+      line-height: 1.55;
+      flex: 1;
+    }
+    .slice .proof {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      line-height: 1.55;
+      color: var(--validation);
+      padding-top: 14px;
+      border-top: 1px dashed var(--border-strong);
+      position: relative;
+    }
+    .slice .proof::before {
+      content: "✓ TEST";
+      display: block;
+      font-size: 9.5px;
+      letter-spacing: 0.2em;
+      color: var(--text-subtle);
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+
+    /* Slice 18 - headline */
+    .slice.headline {
+      grid-column: span 2;
+      background: linear-gradient(135deg, rgba(212, 255, 60, 0.04), rgba(212, 255, 60, 0.01) 60%);
+      border: 1px solid rgba(212, 255, 60, 0.35);
+      margin: -1px;
+      box-shadow: inset 0 0 60px rgba(212, 255, 60, 0.04), 0 0 40px rgba(212, 255, 60, 0.05);
+      padding: 32px 32px 30px;
+      z-index: 2;
+    }
+    .slice.headline:hover {
+      background: linear-gradient(135deg, rgba(212, 255, 60, 0.06), rgba(212, 255, 60, 0.02) 60%);
+    }
+    .slice.headline .headline-badge {
+      position: absolute;
+      top: 32px;
+      right: 32px;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: var(--bg);
+      background: var(--accent);
+      padding: 5px 11px;
+      border-radius: 2px;
+      font-weight: 600;
+    }
+    .slice.headline .num {
+      color: var(--accent);
+    }
+    .slice.headline .num em {
+      color: var(--accent);
+    }
+    .slice.headline h4 {
+      font-size: 28px;
+      letter-spacing: -0.025em;
+      max-width: 80%;
+      margin-top: 6px;
+      font-variation-settings: "opsz" 36;
+    }
+    .slice.headline .goal {
+      font-size: 15px;
+      color: var(--text);
+      max-width: 80%;
+    }
+    .slice.headline .proof {
+      color: var(--accent);
+      border-top-color: rgba(212, 255, 60, 0.25);
+    }
+    .slice.headline .proof::before {
+      color: var(--accent);
+    }
+
+    /* ────────────────────────────────────────────
+       Footer
+       ──────────────────────────────────────────── */
+    .footer {
+      margin-top: 96px;
+      padding-top: 36px;
+      border-top: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+    }
+    .footer .left h4 {
+      font-family: var(--serif);
+      font-weight: 400;
+      font-size: 24px;
+      letter-spacing: -0.02em;
+      margin-bottom: 16px;
+      font-variation-settings: "opsz" 36;
+    }
+    .footer p {
+      color: var(--text-muted);
+      font-size: 13.5px;
+      line-height: 1.7;
+    }
+    .footer .refs {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .footer .refs .ref {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .footer .refs .ref:last-child { border-bottom: none; }
+    .footer .refs .ref .name { color: var(--text); }
+    .footer .refs .ref .desc { color: var(--text-subtle); }
+
+    /* ────────────────────────────────────────────
+       Animations
+       ──────────────────────────────────────────── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .reveal {
+      opacity: 0;
+      animation: fadeUp 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+    .hero .eyebrow { animation-delay: 0.05s; }
+    .hero h1 { animation-delay: 0.15s; }
+    .hero .dek { animation-delay: 0.3s; }
+    .hero .meta { animation-delay: 0.45s; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 1; }
+    }
+    .sm-svg .pulse-dot { animation: pulse 2.4s ease-in-out infinite; }
+
+    /* Print-ish responsive */
+    @media (max-width: 880px) {
+      .page { padding: 32px 24px 56px; }
+      .pillars { grid-template-columns: 1fr; }
+      .pillar { border-left: none; border-top: 1px solid var(--border); padding: 32px 0 0; }
+      .pillar:first-child { padding-top: 0; border-top: none; }
+      .scope-grid { grid-template-columns: 1fr; }
+      .scope-item { border-right: none; border-bottom: 1px solid var(--border) !important; }
+      .scope-item:last-child { border-bottom: none !important; }
+      .phase-header { grid-template-columns: 1fr; }
+      .phase-number { font-size: 56px; }
+      .slice.headline { grid-column: span 1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+
+    <!-- Top strip -->
+    <div class="topstrip">
+      <div class="left">
+        <span><span class="dot"></span>spec / 0. voice bot / voice plugin direction</span>
+        <span>plan.html</span>
+      </div>
+      <div class="right">v1 · locked scope · 22 slices</div>
+    </div>
+
+    <!-- Hero -->
+    <header class="hero">
+      <div class="eyebrow reveal">tauri-plugin-voice — implementation plan</div>
+      <h1 class="reveal">Voice plugin<br><em>as an interface</em><span class="punc">.</span></h1>
+      <p class="dek reveal">A reusable desktop voice interface layer. The plugin owns ears, mouth, and overlay. The host owns the brain.</p>
+      <div class="meta reveal">
+        <div class="stat"><strong>5</strong>Phases</div>
+        <div class="stat"><strong>22</strong>Slices</div>
+        <div class="stat"><strong><span class="accent">18</span></strong>Headline criterion</div>
+        <div class="stat"><strong>1</strong>Example app</div>
+      </div>
+    </header>
+
+    <!-- Pillars: who owns what -->
+    <section class="pillars">
+      <div class="pillar plugin">
+        <div class="role">Plugin</div>
+        <h3>Ears, mouth, <span class="key">overlay</span>.</h3>
+        <p>tauri-plugin-voice owns the voice I/O loop: recording, transcription, the visible state machine, overlay lifecycle, and TTS playback. Stateless across turns.</p>
+        <div class="owns">
+          <span>record</span><span>transcribe</span><span>overlay lifecycle</span><span>tts</span><span>state machine</span>
+        </div>
+      </div>
+      <div class="pillar host">
+        <div class="role">Host</div>
+        <h3>The <span class="key">brain</span>.</h3>
+        <p>The host application owns conversation logic, action routing, response composition, and context across turns. It hands a single tagged command back to the plugin after each transcript.</p>
+        <div class="owns">
+          <span>llm / agent</span><span>conversation memory</span><span>action routing</span><span>overlay content</span><span>declared views</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- State machine -->
+    <div class="section-head">
+      <span class="num">01 / state</span>
+      <h2>The state machine, <em>made visible</em>.</h2>
+      <div class="rule"></div>
+    </div>
+
+    <div class="state-machine">
+      <div class="label">canonical states · plugin-owned · externally observable</div>
+      <svg class="sm-svg" viewBox="0 0 1200 340" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#6b7280"/>
+          </marker>
+          <marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#d4ff3c"/>
+          </marker>
+          <marker id="arrow-dim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#4a5060"/>
+          </marker>
+        </defs>
+
+        <!-- Main row of states -->
+        <g font-family="IBM Plex Mono, monospace" font-size="13" font-weight="500">
+
+          <!-- Idle -->
+          <g>
+            <rect x="40" y="100" width="130" height="54" rx="3" fill="none" stroke="#9aa0ad" stroke-width="1"/>
+            <text x="105" y="133" fill="#e8e6e1" text-anchor="middle">Idle</text>
+          </g>
+
+          <!-- Listening -->
+          <g>
+            <rect x="225" y="100" width="130" height="54" rx="3" fill="none" stroke="#9aa0ad" stroke-width="1"/>
+            <text x="290" y="133" fill="#e8e6e1" text-anchor="middle">Listening</text>
+          </g>
+
+          <!-- Capturing -->
+          <g>
+            <rect x="410" y="100" width="130" height="54" rx="3" fill="none" stroke="#9aa0ad" stroke-width="1"/>
+            <text x="475" y="133" fill="#e8e6e1" text-anchor="middle">Capturing</text>
+          </g>
+
+          <!-- Transcribing -->
+          <g>
+            <rect x="595" y="100" width="130" height="54" rx="3" fill="none" stroke="#9aa0ad" stroke-width="1"/>
+            <text x="660" y="133" fill="#e8e6e1" text-anchor="middle">Transcribing</text>
+          </g>
+
+          <!-- HandedOff (accent) -->
+          <g>
+            <rect x="780" y="86" width="160" height="82" rx="3" fill="rgba(212,255,60,0.04)" stroke="#d4ff3c" stroke-width="1.5"/>
+            <text x="860" y="124" fill="#d4ff3c" text-anchor="middle" font-size="14" font-weight="600">HandedOff</text>
+            <text x="860" y="146" fill="#b8e028" text-anchor="middle" font-size="10" letter-spacing="0.1em">HANDOFF BOUNDARY</text>
+            <circle cx="942" cy="100" r="3" fill="#d4ff3c" class="pulse-dot"/>
+          </g>
+
+          <!-- Declared state (off to the side) -->
+          <g>
+            <rect x="990" y="44" width="170" height="48" rx="3" fill="none" stroke="#7dd3c6" stroke-width="1" stroke-dasharray="3 3"/>
+            <text x="1075" y="74" fill="#7dd3c6" text-anchor="middle" font-size="12">Declared state</text>
+            <text x="1075" y="26" fill="#6b7280" text-anchor="middle" font-size="10" letter-spacing="0.15em">HOST-DECLARED · CONFIG-TIME</text>
+          </g>
+
+          <!-- Cancelled (terminal) -->
+          <g>
+            <rect x="320" y="240" width="130" height="48" rx="3" fill="none" stroke="#6b7280" stroke-width="1" stroke-dasharray="4 3"/>
+            <text x="385" y="270" fill="#9aa0ad" text-anchor="middle" font-size="12">Cancelled</text>
+          </g>
+
+          <!-- Failed (terminal) -->
+          <g>
+            <rect x="540" y="240" width="130" height="48" rx="3" fill="none" stroke="#6b7280" stroke-width="1" stroke-dasharray="4 3"/>
+            <text x="605" y="270" fill="#9aa0ad" text-anchor="middle" font-size="12">Failed</text>
+          </g>
+        </g>
+
+        <!-- Arrows: main forward flow -->
+        <g stroke="#6b7280" stroke-width="1" fill="none">
+          <line x1="170" y1="127" x2="220" y2="127" marker-end="url(#arrow)"/>
+          <line x1="355" y1="127" x2="405" y2="127" marker-end="url(#arrow)"/>
+          <line x1="540" y1="127" x2="590" y2="127" marker-end="url(#arrow)"/>
+          <line x1="725" y1="127" x2="775" y2="127" marker-end="url(#arrow)"/>
+        </g>
+
+        <!-- HandedOff → Declared State -->
+        <g stroke="#7dd3c6" stroke-width="1" fill="none" stroke-dasharray="3 3">
+          <path d="M 940 100 Q 970 70 990 68" marker-end="url(#arrow-dim)"/>
+        </g>
+
+        <!-- Return paths from HandedOff back to Idle and Listening -->
+        <g stroke="#d4ff3c" stroke-width="1" fill="none" opacity="0.9">
+          <!-- continue:false / timeout → Idle (curve down and back) -->
+          <path d="M 825 168 Q 825 240 105 240 Q 80 240 80 200 Q 80 165 105 154" marker-end="url(#arrow-accent)"/>
+          <text x="430" y="234" fill="#d4ff3c" font-family="IBM Plex Mono, monospace" font-size="10" letter-spacing="0.08em" text-anchor="middle">respond(continue:false)  ·  timeout</text>
+
+          <!-- continue:true → Listening -->
+          <path d="M 860 168 Q 860 200 580 200 Q 290 200 290 168" marker-end="url(#arrow-accent)" stroke-dasharray="0"/>
+          <text x="572" y="195" fill="#d4ff3c" font-family="IBM Plex Mono, monospace" font-size="10" letter-spacing="0.08em" text-anchor="middle">respond(continue:true)</text>
+        </g>
+
+        <!-- Cancellation paths (faint) -->
+        <g stroke="#4a5060" stroke-width="1" fill="none" stroke-dasharray="2 3">
+          <path d="M 290 154 L 320 254" marker-end="url(#arrow-dim)"/>
+          <path d="M 475 154 L 450 254" marker-end="url(#arrow-dim)"/>
+          <path d="M 660 154 L 605 254" marker-end="url(#arrow-dim)"/>
+        </g>
+
+        <!-- Terminal → Idle -->
+        <g stroke="#4a5060" stroke-width="1" fill="none" stroke-dasharray="2 3">
+          <path d="M 320 264 Q 100 264 100 154" marker-end="url(#arrow-dim)"/>
+          <path d="M 670 264 Q 130 290 100 200" marker-end="url(#arrow-dim)"/>
+        </g>
+
+        <!-- Annotation tags -->
+        <g font-family="IBM Plex Mono, monospace" font-size="10" fill="#6b7280" letter-spacing="0.08em">
+          <text x="195" y="91" text-anchor="middle">→ startListening</text>
+          <text x="380" y="91" text-anchor="middle">→ audio in</text>
+          <text x="565" y="91" text-anchor="middle">→ stop</text>
+          <text x="750" y="91" text-anchor="middle">→ transcript</text>
+        </g>
+      </svg>
+
+      <div class="sm-legend">
+        <div class="item"><span class="swatch main"></span> plugin-owned state</div>
+        <div class="item"><span class="swatch handoff"></span> handoff boundary</div>
+        <div class="item"><span class="swatch declared"></span> host-declared (config-time)</div>
+        <div class="item"><span class="swatch terminal"></span> terminal → Idle</div>
+      </div>
+    </div>
+
+    <!-- Locked scope -->
+    <div class="section-head">
+      <span class="num">02 / scope</span>
+      <h2>Locked, <em>not relitigated</em>.</h2>
+      <div class="rule"></div>
+    </div>
+
+    <section class="locked-scope">
+      <div class="head">
+        <div class="title">Six decisions that shape every slice.</div>
+        <div class="meta">SCOPE.md · canonical</div>
+      </div>
+      <div class="scope-grid">
+        <div class="scope-item">
+          <span class="idx">D · 01</span>
+          <h4>Visible state machine.</h4>
+          <p>All plugin states are externally observable. No opaque sub-states, no hidden intermediates. Hosts can subscribe to the full state stream.</p>
+        </div>
+        <div class="scope-item">
+          <span class="idx">D · 02</span>
+          <h4>Event-out, command-in handoff.</h4>
+          <p>Plugin emits transcript via <code>voice://handoff</code>. Host returns a single tagged <code>respond</code> command keyed on <code>interactionId</code>.</p>
+        </div>
+        <div class="scope-item">
+          <span class="idx">D · 03</span>
+          <h4>Schema-extensible, not runtime-composable.</h4>
+          <p>Return command carries <code>speak</code> + <code>continue</code> today. New directives extend the schema in future revisions — hosts never compose directive lists at runtime.</p>
+        </div>
+        <div class="scope-item">
+          <span class="idx">D · 04</span>
+          <h4>Intermediate states declared at config time.</h4>
+          <p>Hosts declare custom overlay states at plugin init. Runtime injection is rejected. The plugin owns transitions; the host owns views.</p>
+        </div>
+        <div class="scope-item">
+          <span class="idx">D · 05</span>
+          <h4>Plugin is stateless across turns.</h4>
+          <p>Conversation context lives in the host backend. Multi-turn re-engagement is a fresh <code>startListening</code> call — context never threads through the plugin.</p>
+        </div>
+        <div class="scope-item">
+          <span class="idx">D · 06</span>
+          <h4>Overlay stays in the recorder bridge.</h4>
+          <p>No ownership move this cycle. The contract defined here is overlay-implementation-agnostic and survives a future move.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Phases -->
+    <div class="section-head">
+      <span class="num">03 / phases</span>
+      <h2>Five phases, <em>twenty-two slices</em>.</h2>
+      <div class="rule"></div>
+    </div>
+
+    <!-- Phase 1 -->
+    <section class="phase">
+      <div class="phase-header">
+        <div class="phase-number">01</div>
+        <div class="phase-title">
+          <div class="kicker">Phase · Foundation</div>
+          <h3>Plumbing.</h3>
+          <p>Make plugin state externally observable. No new semantics — pure visibility plumbing that every later phase depends on.</p>
+        </div>
+        <div class="phase-range"><strong>3 slices</strong>· 01 → 03</div>
+      </div>
+
+      <div class="slice-grid">
+        <div class="slice">
+          <div class="topline">
+            <div class="num">slice <em>01</em></div>
+            <div class="chips"><span class="chip rust">RUST</span><span class="chip ts">TS</span></div>
+          </div>
+          <h4>Canonical state names</h4>
+          <div class="goal">Rename phase enum values to <code>Idle / Listening / Capturing / Transcribing</code>. Mirror in TS bindings.</div>
+          <div class="proof">State log in the example app shows the new canonical names during a recording.</div>
+        </div>
+
+        <div class="slice">
+          <div class="topline">
+            <div class="num">slice <em>02</em></div>
+            <div class="chips"><span class="chip example">APP</span></div>
+          </div>
+          <h4>State badge in App.jsx</h4>
+          <div class="goal">Add a live "Plugin State" badge subscribed to <code>CHANNELS.STATE</code>.</div>
+          <div class="proof">Badge cycles Idle → Listening → Capturing → Transcribing → Idle during a recording.</div>
+        </div>
+
+        <div class="slice">
+          <div class="topline">
+            <div class="num">slice <em>03</em></div>
+            <div class="chips"><span class="chip example">APP</span></div>
+          </div>
+          <h4>Event log panel</h4>
+          <div class="goal">Append-only, timestamped log of every state-change event. Foundation for debugging every later slice.</div>
+          <div class="proof">Any flow produces a complete, scannable event sequence in the log panel.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Phase 2 -->
+    <section class="phase">
+      <div class="phase-header">
+        <div class="phase-number">02</div>
+        <div class="phase-title">
+          <div class="kicker">Phase · Boundary</div>
+          <h3>Handoff contract.</h3>
+          <p>Introduce <code>HandedOff</code> as a real state. Emit the transcript on a dedicated event channel. Surface <code>interactionId</code> in the UI so every later slice can address an interaction.</p>
+        </div>
+        <div class="phase-range"><strong>4 slices</strong>· 04 → 07</div>
+      </div>
+
+      <div class="slice-grid">
+        <div class="slice">
+          <div class="topline">
+            <div class="num">slice <em>04</em></div>
+            <div class="chips"><span class="chip rust">RUST</span></div>
+          </div>
+          <h4>HandedOff state</h4>
+          <div class="goal">After Transcribing, plugin enters HandedOff and holds for a default 30s before returning to Idle.</div>
+          <div class="proof">State badge sits on HandedOff for 30s after a recording before returning to Idle.</div>
+        </div>
+
+        <div class="slice">
+          <div class="topline">
+            <div class="num">slice <em>05</em></div>
+            <div class="chips"><span class="chip example">APP</span></div>
+          </div>
+          <h4>HandedOff overlay styling</h4>
+          <div class="goal">Add the HandedOff phase to the overlay window with placeholder "Awaiting host…".</div>
+          <div class="proof">Overlay window stays visible with the placeholder after transcription completes.</div>
+        </div>
+
+        <div class="slice">
+          <div class="topline">
+            <div class="num">slice <em>06</em></div>
+            <div class="chips"><span class="chip rust">RUST</span><span class="chip ts">TS</span></div>
+          </div>
+          <h4>Handoff event with interactionId</h4>
+          <div class="goal">Emit <code>voice://handoff</code> with <code>{interactionId, transcript, transcribedAtMs}</code>.</div>
+          <div class="proof">Event appears in the log panel with a unique <code>interactionId</code> per recording.</div>
+        </div>
+
+        <div class="slice">
+          <div class="topline">
+            <div class="num">slice <em>07</em></div>
+            <div class="chips"><span class="chip example">APP</span></div>
+          </div>
+          <h4>Display interactionId</h4>
+          <div class="goal">Track and render the active <code>interactionId</code> next to the state badge. Clear on Idle.</div>
+          <div class="proof">Each recording shows a fresh ID alongside the badge; ID clears when overlay closes.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Phase 3 -->
+    <section class="phase">
+      <div class="phase-header">
+        <div class="phase-number">03</div>
+        <div class="phase-title">
+          <div class="kicker">Phase · Contract</div>
+          <h3>Return command.</h3>
+          <p>Wire the host's response: <code>respond</code> with <code>continue</code> and <code>speak</code> directives, stale-ID rejection, and a configurable handoff timeout.</p>
+        </div>
+        <div class="phase-range"><strong>6 slices</strong>· 08 → 13</div>
+      </div>
+
+      <div class="slice-grid">
+        <div class="slice">
+          <div class="topline">
+            <div class="num">slice <em>08</em></div>
+            <div class="chips"><span class="chip rust">RUST</span><span class="chip ts">TS</span><span class="chip example">APP</span></div>
+          </div>
+          <h4>respond · continue: false</h4>
+          <div class="goal">Add <code>respond(interactionId, {continue:false})</code>. Validates ID; transitions HandedOff → Idle.</div>
+          <div class="proof">"End Interaction" button closes the overlay after a recording.</div>
+        </div>
+
+        <div class="slice">
+          <div class="topline">
+            <div class="num">slice <em>09</em></div>
+            <div class="chips"><span class="chip rust">RUST</span><span class="chip example">APP</span></div>
+          </div>
+          <h4>respond · continue: true</h4>
+          <div class="goal">Re-arm listening with a fresh <code>interactionId</code>. Same entry point as <code>startListening</code>.</div>
+          <div class="proof">"Continue" button returns the overlay to Listening with a new ID.</div>
+        </div>
+
+        <div class="slice">
+          <div class="topline">
+            <div class="num">slice <em>10</em></div>
+            <div class="chips"><span class="chip rust">RUST</span></div>
+          </div>
+          <h4>Reject stale interactionId</h4>
+          <div class="goal">Typed error when <code>respond</code> is called with an unknown or expired ID. No state change.</div>
+          <div class="proof">Clicking End after the handoff timeout surfaces the stale-ID error in the log.</div>
+        </div>
+
+        <div class="slice">
+          <div class="topline">
+            <div class="num">slice <em>11</em></div>
+            <div class="chips"><span class="chip rust">RUST</span><span class="chip ts">TS</span><span class="chip example">APP</span></div>
+          </div>
+          <h4>speak directive</h4>
+          <div class="goal">Optional <code>speak:{text, voice?, model?}</code> routes to the existing TTS streaming pipeline. <code>continue</code> applies after playback.</div>
+          <div class="proof">"Speak then End" plays synthesized response, then closes the overlay.</div>
+        </div>
+
+        <div class="slice">
+          <div class="topline">
+            <div class="num">slice <em>12</em></div>
+            <div class="chips"><span class="chip rust">RUST</span><span class="chip example">APP</span></div>
+          </div>
+          <h4>speak + continue:true chain</h4>
+          <div class="goal">Sequence speak → re-arm cleanly with no playback/listening races.</div>
+          <div class="proof">"Speak then Continue" plays TTS, then overlay returns to Listening with new ID.</div>
+        </div>
+
+        <div class="slice">
+          <div class="topline">
+            <div class="num">slice <em>13</em></div>
+            <div class="chips"><span class="chip rust">RUST</span><span class="chip ts">TS</span><span class="chip example">APP</span></div>
+          </div>
+          <h4>Configurable handoff timeout</h4>
+          <div class="goal">Accept optional <code>handoffTimeoutMs</code> on <code>startListening</code>. Emit <code>handoff_timeout</code> event on expiry.</div>
+          <div class="proof">Set 5s in the example app; HandedOff auto-returns to Idle in 5s, event logged.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Phase 4 -->
+    <section class="phase headline">
+      <div class="phase-header">
+        <div class="phase-number">04</div>
+        <div class="phase-title">
+          <div class="kicker">Phase · Demo · headline arc</div>
+          <h3>Overlay <span class="accent">injection</span>.</h3>
+          <p>Hosts declare custom overlay states at config time and supply React components for each. The plugin emits, the overlay resolves and renders — the reusability proof.</p>
+        </div>
+        <div class="phase-range"><strong>6 slices</strong>· 14 → 19</div>
+      </div>
+
+      <div class="slice-grid">
+        <div class="slice">
+          <div class="topline">
+            <div class="num">slice <em>14</em></div>
+            <div class="chips"><span class="chip rust">RUST</span><span class="chip ts">TS</span><span class="chip example">APP</span></div>
+          </div>
+          <h4>Declared states at init</h4>
+          <div class="goal">Accept <code>declaredStates:[{name, timeoutMs}]</code> at plugin init. Expose <code>listDeclaredStates()</code>.</div>
+          <div class="proof">App.jsx declares states and renders the list returned by the new command.</div>
+        </div>
+
+        <div class="slice">
+          <div class="topline">
+            <div class="num">slice <em>15</em></div>
+            <div class="chips"><span class="chip rust">RUST</span><span class="chip example">APP</span></div>
+          </div>
+          <h4>Reject runtime injection</h4>
+          <div class="goal">Test-only guard command always returns <code>RuntimeInjectionRejected</code>. Enforces the config-time invariant.</div>
+          <div class="proof">"Try Runtime Register" button shows the typed error in the log.</div>
+        </div>
+
+        <div class="slice">
+          <div class="topline">
+            <div class="num">slice <em>16</em></div>
+            <div class="chips"><span class="chip rust">RUST</span><span class="chip ts">TS</span><span class="chip example">APP</span></div>
+          </div>
+          <h4>transitionToState directive</h4>
+          <div class="goal">Add <code>transitionToState:"&lt;name&gt;"</code> to <code>respond</code>. Validates against declared set; starts declared timeout.</div>
+          <div class="proof">"Show Thinking" button moves the state badge to <code>Thinking</code>.</div>
+        </div>
+
+        <div class="slice">
+          <div class="topline">
+            <div class="num">slice <em>17</em></div>
+            <div class="chips"><span class="chip rust">RUST</span><span class="chip ts">TS</span></div>
+          </div>
+          <h4>render_declared_state event</h4>
+          <div class="goal">On entering a declared state, emit <code>voice://render-declared-state</code> with state name + ID.</div>
+          <div class="proof">Event appears in the log panel with the correct declared-state name.</div>
+        </div>
+
+        <!-- Slice 18 — HEADLINE -->
+        <div class="slice headline">
+          <span class="headline-badge">Headline</span>
+          <div class="topline">
+            <div class="num">slice <em>18</em></div>
+            <div class="chips"><span class="chip example">APP</span></div>
+          </div>
+          <h4>Host-supplied React component renders inside the overlay.</h4>
+          <div class="goal">Define a host-side registry mapping declared state name → React component. The overlay subscribes to <code>render-declared-state</code>, resolves the registered component, and mounts it inside the existing overlay shell. The example app ships a <code>&lt;Thinking /&gt;</code> component for the "Thinking" state.</div>
+          <div class="proof">After "Show Thinking", the overlay window actually renders the host's <code>&lt;Thinking /&gt;</code> component — not a placeholder. This is the reusability proof for the entire project.</div>
+        </div>
+
+        <div class="slice">
+          <div class="topline">
+            <div class="num">slice <em>19</em></div>
+            <div class="chips"><span class="chip rust">RUST</span></div>
+          </div>
+          <h4>Auto-exit declared state</h4>
+          <div class="goal">Exit on next <code>respond</code> or when declared <code>timeoutMs</code> elapses. Emit state-change on exit.</div>
+          <div class="proof">After "Show Thinking", a <code>respond({continue:false})</code> exits cleanly. Timeout path also verified.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Phase 5 -->
+    <section class="phase">
+      <div class="phase-header">
+        <div class="phase-number">05</div>
+        <div class="phase-title">
+          <div class="kicker">Phase · Edges</div>
+          <h3>Edge cases.</h3>
+          <p>Close the corners: explicit Cancelled and Failed states with diagnostics, and a validation that re-engagement parity holds.</p>
+        </div>
+        <div class="phase-range"><strong>3 slices</strong>· 20 → 22</div>
+      </div>
+
+      <div class="slice-grid">
+        <div class="slice">
+          <div class="topline">
+            <div class="num">slice <em>20</em></div>
+            <div class="chips"><span class="chip rust">RUST</span><span class="chip example">APP</span></div>
+          </div>
+          <h4>Cancelled state</h4>
+          <div class="goal">Mid-active cancellation transitions current state → Cancelled → Idle with state-change events.</div>
+          <div class="proof">"Cancel" mid-recording: badge briefly shows Cancelled before settling on Idle.</div>
+        </div>
+
+        <div class="slice">
+          <div class="topline">
+            <div class="num">slice <em>21</em></div>
+            <div class="chips"><span class="chip rust">RUST</span></div>
+          </div>
+          <h4>Failed state with diagnostic</h4>
+          <div class="goal">On unrecoverable failure: transition to Failed → Idle. Event carries a diagnostic field with a useful reason.</div>
+          <div class="proof">Configuring a bad STT model produces a Failed state with a readable diagnostic in the log.</div>
+        </div>
+
+        <div class="slice">
+          <div class="topline">
+            <div class="num">slice <em>22</em></div>
+            <div class="chips"><span class="chip validation">VALIDATION</span></div>
+          </div>
+          <h4>Re-engagement parity</h4>
+          <div class="goal"><code>continue:true</code> and an explicit <code>startListening</code> must produce identical state-change sequences. No new code unless parity is broken.</div>
+          <div class="proof">Side-by-side comparison in the log panel shows matching event sequences.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="left">
+        <h4>Implement strictly in order.</h4>
+        <p>Each slice is independently shippable, validated in the example app at <code style="font-family:var(--mono);font-size:12.5px">tauri-plugin-voice/examples/tauri-app/</code>. Do not extend a slice's scope. The spec docs are the source of truth.</p>
+      </div>
+      <div class="refs">
+        <div class="ref"><span class="name">PRD.md</span><span class="desc">product rationale</span></div>
+        <div class="ref"><span class="name">SCOPE.md</span><span class="desc">locked decisions</span></div>
+        <div class="ref"><span class="name">HLD.md</span><span class="desc">architectural boundary</span></div>
+        <div class="ref"><span class="name">SPLIT.md</span><span class="desc">slice-level detail</span></div>
+        <div class="ref"><span class="name">Plane parent</span><span class="desc">45b3ed31 · "Voice Plugin Interface Boundary"</span></div>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>
