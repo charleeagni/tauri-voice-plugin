@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"enables the default permissions","local":true,"windows":["main"],"permissions":["core:default","voice:default"]}}
+{"default":{"identifier":"default","description":"enables the default permissions","local":true,"windows":["main","overlay"],"permissions":["core:default","voice:default"]}}

@@ -17,6 +17,8 @@ const COMMANDS: &[&str] = &[
     "get_overlay_mode",
     "stream_speech",
     "cancel_speech",
+    "start_listening",
+    "respond",
 ];
 fn main() {
     println!("cargo:rerun-if-changed=src");

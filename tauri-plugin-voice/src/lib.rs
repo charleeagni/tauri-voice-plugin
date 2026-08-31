@@ -43,6 +43,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R, Config> {
             commands::voice_health,
             commands::setup_record_transcribe_pipeline,
             commands::initialize_recorder_runtime,
+            commands::start_listening,
+            commands::respond,
             commands::start_recording,
             commands::stop_recording,
             commands::set_hotkey_bindings,
@@ -52,15 +54,19 @@ pub fn init<R: Runtime>() -> TauriPlugin<R, Config> {
             commands::get_output_destination,
             commands::set_overlay_mode,
             commands::get_overlay_mode,
+            commands::list_declared_states,
+            commands::register_state,
         ])
         .setup(|app, api| {
             #[cfg(desktop)]
-            let tauri_plugin_voice = desktop::init(app)?;
+            let config = api.config().clone();
+            
+            #[cfg(desktop)]
+            let tauri_plugin_voice = desktop::init(app, config.clone())?;
 
             #[cfg(desktop)]
             {
                 // Perform background automated model load at startup as per CODIN-269.
-                let config = api.config().clone();
                 let plugin_clone = tauri_plugin_voice.clone();
                 tauri::async_runtime::spawn(async move {
                     plugin_clone.startup_preload(config).await;

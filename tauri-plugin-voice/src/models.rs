@@ -174,13 +174,43 @@ pub struct CancelSpeechRequest {
     pub synthesis_id: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CancelSpeechResponse {
     pub synthesis_id: String,
 
     // True when an active stream was cancelled.
     pub cancelled: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartListeningRequest {
+    pub handoff_timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpeakDirective {
+    pub text: String,
+    pub voice: Option<String>,
+    pub model: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RespondRequest {
+    pub interaction_id: String,
+    #[serde(rename = "continue")]
+    pub continue_session: bool,
+    pub speak: Option<SpeakDirective>,
+    pub transition_to_state: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RespondResponse {
+    pub contract_version: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -368,9 +398,47 @@ pub struct EffectiveOutputDestination {
 #[serde(rename_all = "snake_case")]
 pub enum Phase {
     Idle,
-    Recording,
+    Listening,
+    // Accepts recorder-bridge's legacy "recording" wire value during migration.
+    #[serde(alias = "recording")]
+    Capturing,
     Transcribing,
-    Error,
+    HandedOff,
+    Speaking,
+    Cancelled,
+    Failed,
+    #[serde(untagged)]
+    DeclaredState(String),
+}
+
+// Emitted on voice://handoff when entering HandedOff after transcription.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HandoffEvent {
+    pub contract_version: String,
+    pub event_id: String,
+    pub interaction_id: String,
+    pub transcript: String,
+    pub transcribed_at_ms: u64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenderDeclaredStateEvent {
+    pub contract_version: String,
+    pub event_id: String,
+    pub interaction_id: String,
+    pub state_name: String,
+    pub emitted_at_ms: u64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HandoffTimeoutEvent {
+    pub contract_version: String,
+    pub event_id: String,
+    pub interaction_id: String,
+    pub emitted_at_ms: u64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -460,19 +528,36 @@ pub struct RecordingResult {
     pub trigger_source: TriggerSource,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DeclaredState {
+    pub name: String,
+    pub timeout_ms: Option<u64>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Config {
     /// Whisper model ID to load at startup. Defaults to "tiny.en".
     pub model_id: Option<String>,
+    #[serde(default)]
+    pub declared_states: Vec<DeclaredState>,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             model_id: Some("tiny.en".to_string()),
+            declared_states: vec![],
         }
     }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListDeclaredStatesResponse {
+    pub contract_version: String,
+    pub states: Vec<DeclaredState>,
 }
 
 // Commands schema
@@ -558,6 +643,8 @@ pub struct StateEvent {
     pub emitted_at_ms: u64,
     pub state: RuntimeState,
     pub readiness: Readiness,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diagnostic: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

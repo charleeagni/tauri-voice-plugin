@@ -45,6 +45,11 @@ pub enum Error {
         message: String,
         details: Option<String>,
     },
+    #[error("Runtime injection rejected: {message}")]
+    RuntimeInjectionRejected {
+        message: String,
+        details: Option<String>,
+    },
 }
 
 impl Error {
@@ -86,6 +91,12 @@ impl Error {
     }
     pub fn feature_disabled(msg: impl Into<String>) -> Self {
         Self::FeatureDisabled {
+            message: msg.into(),
+            details: None,
+        }
+    }
+    pub fn runtime_injection_rejected(msg: impl Into<String>) -> Self {
+        Self::RuntimeInjectionRejected {
             message: msg.into(),
             details: None,
         }
@@ -142,6 +153,11 @@ impl Serialize for Error {
             }
             Error::FeatureDisabled { message, details } => {
                 state.serialize_field("code", "feature_disabled")?;
+                state.serialize_field("message", message)?;
+                state.serialize_field("details", details)?;
+            }
+            Error::RuntimeInjectionRejected { message, details } => {
+                state.serialize_field("code", "runtime_injection_rejected")?;
                 state.serialize_field("message", message)?;
                 state.serialize_field("details", details)?;
             }

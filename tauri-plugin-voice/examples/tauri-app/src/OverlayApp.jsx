@@ -6,9 +6,25 @@ import './overlay.css';
 
 const DONE_DISPLAY_MS = 500;
 
+function Thinking() {
+  return (
+    <section className="overlay-indicator is-thinking" aria-live="polite">
+      <span className="overlay-dot is-thinking" style={{ backgroundColor: 'purple', width: '12px', height: '12px', borderRadius: '50%', display: 'inline-block' }} />
+      <span className="overlay-text-stack">
+        <span className="overlay-text">Thinking...</span>
+      </span>
+    </section>
+  );
+}
+
+const overlayRegistry = {
+  Thinking: Thinking,
+};
+
 function OverlayApp() {
   const [overlayPhase, setOverlayPhase] = useState('hidden');
   const [interimPreview, setInterimPreview] = useState('');
+  const [declaredStateName, setDeclaredStateName] = useState(null);
 
   // Track previous and active phase for done-state detection.
   const previousPhaseRef = useRef('idle');
@@ -19,6 +35,7 @@ function OverlayApp() {
     let disposed = false;
     let unlistenState;
     let unlistenLive;
+    let unlistenRender;
     const currentWindow = getCurrentWindow();
 
     const clearDoneTimer = () => {
@@ -52,7 +69,7 @@ function OverlayApp() {
 
       clearDoneTimer();
 
-      if (phase === 'recording') {
+      if (phase === 'listening' || phase === 'recording' || phase === 'capturing') {
         setOverlayPhase('recording');
         void showOverlay();
         return;
@@ -64,8 +81,28 @@ function OverlayApp() {
         return;
       }
 
-      // Transcribing → idle means transcription completed; show "Done" briefly.
-      if (phase === 'idle' && previousPhase === 'transcribing') {
+      if (phase === 'handed_off') {
+        setOverlayPhase('handed_off');
+        void showOverlay();
+        return;
+      }
+
+      if (phase === 'speaking') {
+        setOverlayPhase('speaking');
+        void showOverlay();
+        return;
+      }
+
+      // Check if it's a declared state in our registry
+      if (overlayRegistry[phase]) {
+        setOverlayPhase('declared_state');
+        setDeclaredStateName(phase);
+        void showOverlay();
+        return;
+      }
+
+      // Transcribing or Speaking → idle: show "Done" briefly.
+      if (phase === 'idle' && (previousPhase === 'transcribing' || previousPhase === 'speaking')) {
         setOverlayPhase('done');
         void showOverlay();
         doneTimerRef.current = setTimeout(() => {
@@ -108,7 +145,7 @@ function OverlayApp() {
 
         // Listen for live transcript frames.
         const liveUn = await listen(CHANNELS.LIVE, (event) => {
-          if (activePhaseRef.current !== 'recording' && activePhaseRef.current !== 'transcribing') {
+          if (activePhaseRef.current !== 'recording' && activePhaseRef.current !== 'capturing' && activePhaseRef.current !== 'transcribing') {
             // Show final transcript text in done state.
             if (event.payload?.text) {
               setInterimPreview(event.payload.text);
@@ -120,13 +157,26 @@ function OverlayApp() {
           }
         });
 
+        const renderUn = await listen(CHANNELS.RENDER_DECLARED_STATE, (event) => {
+          if (disposed) return;
+          console.log("Render declared state:", event.payload);
+          const { stateName } = event.payload;
+          if (overlayRegistry[stateName]) {
+             setOverlayPhase('declared_state');
+             setDeclaredStateName(stateName);
+             void showOverlay();
+          }
+        });
+
         if (disposed) {
           stateUn();
           liveUn();
+          renderUn();
           return;
         }
         unlistenState = stateUn;
         unlistenLive = liveUn;
+        unlistenRender = renderUn;
       } catch {
         // Ignore listener setup failures.
       }
@@ -139,6 +189,7 @@ function OverlayApp() {
       clearDoneTimer();
       unlistenState?.();
       unlistenLive?.();
+      unlistenRender?.();
       document.documentElement.classList.remove('overlay-body');
       document.body.classList.remove('overlay-body');
     };
@@ -148,19 +199,44 @@ function OverlayApp() {
     return <main className="overlay-root" />;
   }
 
+  if (overlayPhase === 'declared_state' && declaredStateName && overlayRegistry[declaredStateName]) {
+    const Component = overlayRegistry[declaredStateName];
+    return (
+      <main className="overlay-root">
+        <Component />
+      </main>
+    );
+  }
+
   const overlayLabel =
     overlayPhase === 'recording'
       ? 'Recording'
       : overlayPhase === 'transcribing'
         ? 'Transcribing'
-        : 'Done';
+        : overlayPhase === 'handed_off'
+          ? 'Awaiting host…'
+          : overlayPhase === 'speaking'
+            ? 'Agent Speaking'
+            : overlayPhase === 'cancelled'
+              ? 'Cancelled'
+              : overlayPhase === 'failed'
+                ? 'Failed'
+                : 'Done';
 
   const overlayStateClass =
     overlayPhase === 'recording'
       ? 'is-recording'
       : overlayPhase === 'transcribing'
         ? 'is-transcribing'
-        : 'is-done';
+        : overlayPhase === 'handed_off'
+          ? 'is-handed-off'
+          : overlayPhase === 'speaking'
+            ? 'is-speaking'
+            : overlayPhase === 'cancelled'
+              ? 'is-cancelled'
+              : overlayPhase === 'failed'
+                ? 'is-failed'
+                : 'is-done';
 
   const showPreviewLine =
     (overlayPhase === 'recording' || overlayPhase === 'transcribing' || overlayPhase === 'done') &&

@@ -18,5 +18,7 @@ permissions = [
     "allow-set-overlay-mode",
     "allow-get-overlay-mode",
     "allow-stream-speech",
-    "allow-cancel-speech"
+    "allow-cancel-speech",
+    "allow-start-listening",
+    "allow-respond"
 ]

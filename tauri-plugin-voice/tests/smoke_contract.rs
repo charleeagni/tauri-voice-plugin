@@ -370,7 +370,7 @@ fn recorder_bridge_shapes_serialize() {
     };
 
     let state = RuntimeState {
-        phase: Phase::Recording,
+        phase: Phase::Capturing,
         mic_permission: PermissionState::Granted,
     };
 
@@ -392,7 +392,7 @@ fn recorder_bridge_shapes_serialize() {
 
     // Testing casing translations
     assert_eq!(value["contractVersion"], "0.1.0");
-    assert_eq!(value["state"]["phase"], "recording");
+    assert_eq!(value["state"]["phase"], "capturing");
     assert_eq!(value["state"]["micPermission"], "granted");
     assert_eq!(value["readiness"]["aggregateStatus"], "ready");
     assert_eq!(value["readiness"]["recordingReady"], true);

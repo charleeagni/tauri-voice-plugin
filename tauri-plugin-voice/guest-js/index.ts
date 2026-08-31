@@ -118,6 +118,27 @@ export interface CancelSpeechResponse {
   cancelled: boolean;
 }
 
+export interface StartListeningRequest {
+  handoffTimeoutMs?: number;
+}
+
+export interface SpeakDirective {
+  text: string;
+  voice?: string;
+  model?: string;
+}
+
+export interface RespondRequest {
+  interactionId: string;
+  continue: boolean;
+  speak?: SpeakDirective;
+  transitionToState?: string;
+}
+
+export interface RespondResponse {
+  contractVersion: string;
+}
+
 export type TtsStreamEventType = "start" | "chunk" | "complete" | "error" | "cancelled";
 
 export interface TtsStreamEvent {
@@ -143,6 +164,8 @@ export interface TtsStreamEvent {
 /** Handle returned by playStreamedSpeech to cancel active playback. */
 export interface StreamPlaybackHandle {
   cancel: () => Promise<void>;
+  /** Resolves when all scheduled audio has finished playing (not just synthesised). */
+  playbackDone: Promise<void>;
 }
 
 export interface SetupRecordTranscribePipelineRequest {
@@ -204,7 +227,7 @@ export interface EffectiveOutputDestination {
   resolvedBaseDir?: string | null;
 }
 
-export type Phase = "idle" | "recording" | "transcribing" | "error";
+export type Phase = "idle" | "listening" | "capturing" | "transcribing" | "handed_off" | "speaking" | string;
 export type OverlayMode =
   | { type: "default" }
   | { type: "consumer"; consumerUrl: string }
@@ -302,6 +325,16 @@ export interface HotkeyBindings {
 export interface ConfigDestinationResponse {
   contractVersion: string;
   outputDestination: OutputDestination;
+}
+
+export interface DeclaredState {
+  name: string;
+  timeoutMs?: number | null;
+}
+
+export interface ListDeclaredStatesResponse {
+  contractVersion: string;
+  states: DeclaredState[];
 }
 
 export interface OverlayModeResponse {
@@ -442,6 +475,8 @@ export async function playStreamedSpeech(
   let playbackStarted = false;
   let done = false;
   let cancelled = false;
+  let resolvePlaybackDone!: () => void;
+  const playbackDone = new Promise<void>((resolve) => { resolvePlaybackDone = resolve; });
 
   function decodePcm16(base64: string): Float32Array<ArrayBuffer> {
     // Decode base64 → raw bytes → PCM16 int16 → float32 normalised.
@@ -497,18 +532,60 @@ export async function playStreamedSpeech(
     if (event.type === "complete" || event.type === "error" || event.type === "cancelled") {
       done = true;
       unlisten();
+      if (event.type === "complete") {
+        // Wait until the last scheduled buffer has actually played out.
+        const remainingMs = Math.max(0, (nextStartTime - ctx.currentTime) * 1000);
+        setTimeout(resolvePlaybackDone, remainingMs);
+      } else {
+        resolvePlaybackDone();
+      }
     }
   });
 
   return {
+    playbackDone,
     async cancel() {
       if (done || cancelled) return;
       cancelled = true;
       unlisten();
       ctx.suspend();
+      resolvePlaybackDone();
       await cancelSpeech({ synthesisId });
     },
   };
+}
+
+/**
+ * Re-arms the recording pipeline for the next turn.
+ *
+ * :param handoffTimeoutMs: Optional new timeout for the next turn.
+ * :return: Initial recording state.
+ */
+export async function startListening(
+  handoffTimeoutMs?: number,
+): Promise<StartRecordingResponse> {
+  return await invoke("plugin:voice|start_listening", { payload: { handoffTimeoutMs } });
+}
+
+/**
+ * Returns a response to the voice plugin after handling a HandedOff interaction.
+ *
+ * :param interactionId: The current interaction ID.
+ * :param options: Configuration including 'continue' and optional 'speak' directives.
+ * :return: Acknowledge payload.
+ */
+export async function respond(
+  interactionId: string,
+  options: { continue: boolean; speak?: SpeakDirective; transitionToState?: string }
+): Promise<RespondResponse> {
+  return await invoke("plugin:voice|respond", {
+    payload: {
+      interactionId,
+      continue: options.continue,
+      speak: options.speak,
+      transitionToState: options.transitionToState,
+    },
+  });
 }
 
 /**
@@ -670,17 +747,37 @@ export async function getOverlayMode(): Promise<OverlayModeResponse> {
   return await invoke("plugin:voice|get_overlay_mode");
 }
 
-// =============================================================================
-// EVENTS & OVERLAYS
-// =============================================================================
+/**
+ * List the states declared at plugin initialization.
+ *
+ * :return: List of declared states configuration.
+ */
+export async function listDeclaredStates(): Promise<ListDeclaredStatesResponse> {
+  return await invoke("plugin:voice|list_declared_states");
+}
 
+/**
+ * Attempts to register a state at runtime (always rejected).
+ *
+ * :param state: The state to register.
+ */
+export async function registerState(state: DeclaredState): Promise<void> {
+  return await invoke("plugin:voice|register_state", { payload: state });
+}
+
+// =============================================================================
+// EVENTS
+// =============================================================================
 export const CHANNELS = {
   STATE: "tauri-audio-plugin://state",
   ERROR: "tauri-audio-plugin://error",
-  COMPLETE: "tauri-audio-plugin://complete",
   LIVE: "tauri-audio-plugin://live",
+  COMPLETE: "tauri-audio-plugin://complete",
   PROGRESS: "tauri-voice-plugin://model-progress",
   TTS_STREAM: "tauri-voice-plugin://tts-stream",
+  HANDOFF: "voice://handoff",
+  HANDOFF_TIMEOUT: "voice://handoff_timeout",
+  RENDER_DECLARED_STATE: "voice://render_declared_state",
 } as const;
 
 export interface StateEvent {
@@ -716,15 +813,31 @@ export interface LiveEvent {
   text: string;
 }
 
+export interface HandoffEvent {
+  contractVersion: string;
+  eventId: string;
+  interactionId: string;
+  transcript: string;
+  transcribedAtMs: number;
+}
+
+export interface HandoffTimeoutEvent {
+  contractVersion: string;
+  eventId: string;
+  interactionId: string;
+  emittedAtMs: number;
+}
+
 export interface OverlayRenderContext {
   state: RuntimeState;
 }
 
 export interface OverlayPhaseViews<T> {
   idle?: T;
-  recording?: T;
+  listening?: T;
+  capturing?: T;
   transcribing?: T;
-  error?: T;
+  speaking?: T;
   fallback?: T;
 }
 
@@ -736,16 +849,20 @@ export function resolveOverlayView<T>(
     return views.fallback ?? null;
   }
 
-  if (state.phase === "recording") {
-    return views.recording ?? views.fallback ?? null;
+  if (state.phase === "listening") {
+    return views.listening ?? views.fallback ?? null;
+  }
+
+  if (state.phase === "capturing") {
+    return views.capturing ?? views.fallback ?? null;
   }
 
   if (state.phase === "transcribing") {
     return views.transcribing ?? views.fallback ?? null;
   }
 
-  if (state.phase === "error") {
-    return views.error ?? views.fallback ?? null;
+  if (state.phase === "speaking") {
+    return views.speaking ?? views.fallback ?? null;
   }
 
   return views.idle ?? views.fallback ?? null;
@@ -805,6 +922,34 @@ export async function listenModelProgress(
 ): Promise<() => void> {
   return await listen<ModelProgressEvent>(CHANNELS.PROGRESS, (event) => {
     onProgress(event.payload);
+  });
+}
+
+/**
+ * Subscribes to the voice://handoff event emitted when the plugin enters HandedOff.
+ *
+ * :param onHandoff: Callback invoked with each HandoffEvent.
+ * :return: A teardown function to unsubscribe.
+ */
+export async function listenHandoff(
+  onHandoff: (event: HandoffEvent) => void,
+): Promise<() => void> {
+  return await listen<HandoffEvent>(CHANNELS.HANDOFF, (event) => {
+    onHandoff(event.payload);
+  });
+}
+
+/**
+ * Subscribes to the voice://handoff_timeout event emitted when a handoff expires.
+ *
+ * :param onTimeout: Callback invoked with each HandoffTimeoutEvent.
+ * :return: A teardown function to unsubscribe.
+ */
+export async function listenHandoffTimeout(
+  onTimeout: (event: HandoffTimeoutEvent) => void,
+): Promise<() => void> {
+  return await listen<HandoffTimeoutEvent>(CHANNELS.HANDOFF_TIMEOUT, (event) => {
+    onTimeout(event.payload);
   });
 }
 

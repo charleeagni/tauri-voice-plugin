@@ -382,3 +382,93 @@ button.clear {
   50% { opacity: 0.7; transform: scale(1.05); }
   100% { opacity: 1; transform: scale(1); }
 }
+
+/* Plugin phase badge — live state machine indicator */
+.plugin-phase-badge {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: white;
+  background: #666;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.plugin-phase-badge.idle {
+  background: #7f8c8d;
+}
+
+.plugin-phase-badge.listening {
+  background: #2980b9;
+  box-shadow: 0 0 10px rgba(41, 128, 185, 0.5);
+  animation: pulse-blue 1.5s infinite;
+}
+
+.plugin-phase-badge.capturing {
+  background: #e74c3c;
+  box-shadow: 0 0 10px rgba(231, 76, 60, 0.5);
+  animation: blink 1s infinite;
+}
+
+.plugin-phase-badge.transcribing {
+  background: #27ae60;
+  box-shadow: 0 0 10px rgba(39, 174, 96, 0.4);
+  animation: pulse-orange 2s infinite;
+}
+
+.plugin-phase-badge.handed_off {
+  background: #9b59b6;
+  box-shadow: 0 0 10px rgba(155, 89, 182, 0.5);
+  animation: pulse-purple 2s infinite;
+}
+
+@keyframes pulse-purple {
+  0% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.05); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pulse-blue {
+  0% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.05); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* State event log panel */
+.state-event-log {
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 8px;
+  height: 180px;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 0.75rem;
+}
+
+.state-log-entry {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  border-bottom: 1px solid #1e1e1e;
+  padding: 2px 0;
+}
+
+.state-log-ts {
+  color: #555;
+  flex-shrink: 0;
+  font-size: 0.7rem;
+}
+
+.state-log-phase {
+  font-weight: bold;
+  color: #ccc;
+}
+
+.state-log-phase.idle { color: #7f8c8d; }
+.state-log-phase.listening { color: #5dade2; }
+.state-log-phase.capturing { color: #ec7063; }
+.state-log-phase.transcribing { color: #58d68d; }
+.state-log-phase.handed_off { color: #9b59b6; }

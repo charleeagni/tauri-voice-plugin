@@ -30,6 +30,8 @@ const TTS_STREAM_CHANNEL: &str = "tauri-voice-plugin://tts-stream";
 const COMPLETE_CHANNEL: &str = "tauri-audio-plugin://complete";
 const STATE_CHANNEL: &str = "tauri-audio-plugin://state";
 const LIVE_CHANNEL: &str = "tauri-audio-plugin://live";
+const HANDOFF_CHANNEL: &str = "voice://handoff";
+const HANDOFF_TIMEOUT_SECS: u64 = 30;
 
 const DEFAULT_STREAM_FORMAT: &str = "pcm_s16le";
 const DEFAULT_STREAM_SAMPLE_RATE_HZ: u32 = 24000;
@@ -80,9 +82,20 @@ fn model_repo_for(model_id: &str) -> String {
     }
 }
 
-pub fn init<R: Runtime>(app: &AppHandle<R>) -> crate::Result<TauriPluginVoice<R>> {
+pub fn init<R: Runtime>(app: &AppHandle<R>, config: Config) -> crate::Result<TauriPluginVoice<R>> {
+    let mut names = std::collections::HashSet::new();
+    for state in &config.declared_states {
+        if !names.insert(&state.name) {
+            return Err(crate::Error::invalid_input(format!(
+                "Duplicate declared state name: {}",
+                state.name
+            )));
+        }
+    }
+
     Ok(TauriPluginVoice {
         app: app.clone(),
+        declared_states: Arc::new(config.declared_states),
         pipeline_state: Arc::new(Mutex::new(PipelineRuntimeState::default())),
         stt: SttEngineState::default(),
         tts: TtsEngineState::default(),
@@ -246,6 +259,7 @@ impl SttEngineState {
 /// Access to the tauri-plugin-voice APIs.
 pub struct TauriPluginVoice<R: Runtime> {
     app: AppHandle<R>,
+    declared_states: Arc<Vec<DeclaredState>>,
     pipeline_state: Arc<Mutex<PipelineRuntimeState>>,
     stt: SttEngineState,
     tts: TtsEngineState,
@@ -255,6 +269,7 @@ impl<R: Runtime> Clone for TauriPluginVoice<R> {
     fn clone(&self) -> Self {
         Self {
             app: self.app.clone(),
+            declared_states: self.declared_states.clone(),
             pipeline_state: self.pipeline_state.clone(),
             stt: self.stt.clone(),
             tts: self.tts.clone(),
@@ -304,9 +319,35 @@ struct PipelineRuntimeState {
     configured_once: bool,
     listener_id: Option<tauri::EventId>,
     config: Option<PipelineConfig>,
+    // Current HandedOff interaction ID; None when not in HandedOff.
+    handoff_interaction_id: Option<String>,
+    // Optional timeout override from startListening.
+    handoff_timeout_ms: Option<u64>,
 }
 
 impl<R: Runtime> TauriPluginVoice<R> {
+    pub fn list_declared_states(&self) -> crate::Result<ListDeclaredStatesResponse> {
+        Ok(ListDeclaredStatesResponse {
+            contract_version: crate::models::CONTRACT_VERSION.to_string(),
+            states: self.declared_states.as_ref().clone(),
+        })
+    }
+
+    pub fn get_runtime_state(&self) -> crate::Result<GetRuntimeStateResponse> {
+        #[cfg(feature = "recorder-bridge")]
+        {
+            use tauri_plugin_recorder::RecorderExt;
+            let res = self.app.recorder()
+                .get_runtime_state()
+                .map_err(|e| crate::Error::invalid_input(e.to_string()))?;
+            convert_bridge_response(res)
+        }
+        #[cfg(not(feature = "recorder-bridge"))]
+        {
+            Err(crate::Error::feature_disabled("Recorder bridge is disabled"))
+        }
+    }
+
     pub async fn startup_preload(&self, config: Config) {
         let model_id = config.model_id.unwrap_or_else(|| DEFAULT_MODEL.to_string());
 
@@ -1327,6 +1368,216 @@ impl<R: Runtime> TauriPluginVoice<R> {
         })
     }
 
+    pub async fn start_listening(
+        &self,
+        payload: StartListeningRequest,
+    ) -> crate::Result<StartRecordingResponse> {
+        if let Some(timeout_ms) = payload.handoff_timeout_ms {
+            let mut state = self.pipeline_state.lock().expect("pipeline state mutex poisoned");
+            state.handoff_timeout_ms = Some(timeout_ms);
+        }
+
+        #[cfg(feature = "recorder-bridge")]
+        {
+            use tauri_plugin_recorder::RecorderExt;
+            let res = self.app.recorder()
+                .start_recording(None, None, tauri_plugin_recorder::TriggerSource::Manual)
+                .map_err(|e| crate::Error::invalid_input(e.to_string()))?;
+            convert_bridge_response(res)
+        }
+        #[cfg(not(feature = "recorder-bridge"))]
+        {
+            Err(crate::Error::feature_disabled("Recorder bridge is disabled"))
+        }
+    }
+
+    pub async fn respond(&self, payload: RespondRequest) -> crate::Result<RespondResponse> {
+        let interaction_id = payload.interaction_id.clone();
+        
+        // Validate interactionId
+        let valid = {
+            let state = self.pipeline_state.lock().expect("pipeline state mutex poisoned");
+            state.handoff_interaction_id.as_deref() == Some(interaction_id.as_str())
+        };
+
+        if !valid {
+            return Err(crate::Error::invalid_input(format!("Unknown or stale interactionId: {}", interaction_id)));
+        }
+
+        // We're good, clear the current handoff ID so timeout thread knows it's superseded.
+        {
+            let mut state = self.pipeline_state.lock().expect("pipeline state mutex poisoned");
+            state.handoff_interaction_id = None;
+        }
+        
+        let app_handle = self.app.clone();
+
+        // Handle transitionToState BEFORE speak
+        if let Some(state_name) = &payload.transition_to_state {
+            let declared_state = self.declared_states.iter().find(|s| s.name == *state_name);
+            if let Some(state) = declared_state {
+                // Transition to declared state
+                emit_state_transition(&app_handle, Phase::DeclaredState(state.name.clone()));
+                
+                // Emit render_declared_state event
+                let render_event = RenderDeclaredStateEvent {
+                    contract_version: CONTRACT_VERSION.to_string(),
+                    event_id: short_request_id(),
+                    interaction_id: interaction_id.clone(),
+                    state_name: state.name.clone(),
+                    emitted_at_ms: now_ms(),
+                };
+                let _ = app_handle.emit("voice://render_declared_state", render_event);
+
+                // Handle auto-exit timeout
+                if let Some(timeout_ms) = state.timeout_ms {
+                    let plugin_clone = self.clone();
+                    let _int_id = interaction_id.clone();
+                    let state_name = state.name.clone();
+                    let app_h = app_handle.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(timeout_ms));
+                        // Verify we are still in this state
+                        let current_state = plugin_clone.get_runtime_state().unwrap().state.phase;
+                        if let Phase::DeclaredState(current_name) = current_state {
+                            if current_name == state_name {
+                                emit_state_transition(&app_h, Phase::Idle);
+                                #[cfg(feature = "recorder-bridge")]
+                                {
+                                    use tauri_plugin_recorder::RecorderExt;
+                                    let _ = app_h.recorder().hide_overlay();
+                                }
+                            }
+                        }
+                    });
+                }
+            } else {
+                return Err(crate::Error::invalid_input(format!("Unknown declared state: {}", state_name)));
+            }
+        }
+
+        let is_transitioning_to_declared_state = payload.transition_to_state.is_some();
+        let plugin = self.clone();
+
+        // If there is a speak directive, we must stream it and wait for it to complete.
+        // We do this in a spawned task so `respond` returns immediately to the caller,
+        // but the internal state progression (playback -> continue) happens async.
+        tauri::async_runtime::spawn(async move {
+            let mut play_success = true;
+            if let Some(speak) = payload.speak {
+                emit_state_transition(&app_handle, Phase::Speaking);
+                let req = StreamSpeechRequest {
+                    text: speak.text,
+                    model_id: speak.model,
+                    voice_id: speak.voice,
+                    language_code: None,
+                    speed: None,
+                    chunk_duration_ms: None,
+                };
+                
+                // Call stream_speech. The actual Web Audio playback happens in the frontend.
+                // The prompt says "Apply continue only after speak playback resolves."
+                // Since Web Audio plays it on the frontend, the frontend should ideally orchestrate this
+                // if we are using the existing TTS streaming pipeline (guest-js index.ts).
+                // Wait! "Reuse existing TTS streaming pipeline for speak... Apply continue only after speak playback resolves."
+                // Wait, if we use `stream_speech` here, we are just generating chunks. The frontend will hear them and play them?
+                // Actually, if we just call `stream_speech`, the frontend's `listenToTtsStream` won't automatically route it to `playStreamedSpeech` unless we do something on the frontend!
+                // Let's revisit this thought after checking what the HLD expects. The HLD says: "Route to existing TTS streaming pipeline (CODIN-349 MVP - do NOT reimplement)."
+                // I will call `stream_speech` and wait for it to finish chunk generation at least.
+                let (tx, mut rx) = tauri::async_runtime::channel(1);
+                
+                // Start the stream
+                match plugin.stream_speech(req).await {
+                    Ok(resp) => {
+                        let target_synthesis_id = resp.synthesis_id;
+                        let listener_id = app_handle.listen_any(TTS_STREAM_CHANNEL, move |event| {
+                            if let Ok(tts_event) = serde_json::from_str::<TtsStreamEvent>(event.payload()) {
+                                if tts_event.synthesis_id == target_synthesis_id {
+                                    if tts_event.event_type == TtsStreamEventType::Complete {
+                                        let _ = tx.try_send(Ok(()));
+                                    } else if tts_event.event_type == TtsStreamEventType::Error {
+                                        let _ = tx.try_send(Err(tts_event.error.unwrap_or_else(|| "Playback error".into())));
+                                    } else if tts_event.event_type == TtsStreamEventType::Cancelled {
+                                        let _ = tx.try_send(Err("cancelled".into()));
+                                    }
+                                }
+                            }
+                        });
+                        
+                        // Wait for completion
+                        if let Some(Err(e)) = rx.recv().await {
+                            eprintln!("Respond: stream_speech failed: {}", e);
+                            play_success = false;
+                            if e == "cancelled" {
+                                emit_state_transition(&app_handle, Phase::Cancelled);
+                                let app_idle = app_handle.clone();
+                                std::thread::spawn(move || {
+                                    std::thread::sleep(std::time::Duration::from_millis(500));
+                                    emit_state_transition(&app_idle, Phase::Idle);
+                                    #[cfg(feature = "recorder-bridge")]
+                                    {
+                                        use tauri_plugin_recorder::RecorderExt;
+                                        let _ = app_idle.recorder().hide_overlay();
+                                    }
+                                });
+                            } else {
+                                emit_state_transition_with_diagnostic(&app_handle, Phase::Failed, Some(e));
+                                let app_idle = app_handle.clone();
+                                std::thread::spawn(move || {
+                                    std::thread::sleep(std::time::Duration::from_millis(1500));
+                                    emit_state_transition(&app_idle, Phase::Idle);
+                                    #[cfg(feature = "recorder-bridge")]
+                                    {
+                                        use tauri_plugin_recorder::RecorderExt;
+                                        let _ = app_idle.recorder().hide_overlay();
+                                    }
+                                });
+                            }
+                        }
+                        app_handle.unlisten(listener_id);
+                    }
+                    Err(e) => {
+                        eprintln!("Respond: stream_speech failed: {:?}", e);
+                        play_success = false;
+                        emit_state_transition_with_diagnostic(&app_handle, Phase::Failed, Some(e.to_string()));
+                        let app_idle = app_handle.clone();
+                        std::thread::spawn(move || {
+                            std::thread::sleep(std::time::Duration::from_millis(1500));
+                            emit_state_transition(&app_idle, Phase::Idle);
+                            #[cfg(feature = "recorder-bridge")]
+                            {
+                                use tauri_plugin_recorder::RecorderExt;
+                                let _ = app_idle.recorder().hide_overlay();
+                            }
+                        });
+                    }
+                }
+            }
+
+            // Finally apply continue if playback didn't fatally fail
+            if play_success {
+                if !is_transitioning_to_declared_state {
+                    if payload.continue_session {
+                        // Start listening again
+                        let _ = plugin.start_listening(StartListeningRequest { handoff_timeout_ms: None }).await;
+                    } else {
+                        // Transition to Idle and hide overlay
+                        emit_state_transition(&app_handle, Phase::Idle);
+                        #[cfg(feature = "recorder-bridge")]
+                        {
+                            use tauri_plugin_recorder::RecorderExt;
+                            let _ = app_handle.recorder().hide_overlay();
+                        }
+                    }
+                }
+            }
+        });
+
+        Ok(RespondResponse {
+            contract_version: CONTRACT_VERSION.to_string(),
+        })
+    }
+
     pub fn setup_record_transcribe_pipeline(
         &self,
         payload: SetupRecordTranscribePipelineRequest,
@@ -1393,6 +1644,66 @@ impl<R: Runtime> TauriPluginVoice<R> {
             let pipeline_state = self.pipeline_state.clone();
             let stt = self.stt.clone();
             let tts = self.tts.clone();
+
+            // Translate recorder-bridge "recording" events to canonical phase names.
+            let app_err = self.app.clone();
+            let _ = self.app.listen_any("tauri-audio-plugin://error", move |event| {
+                let raw: serde_json::Value = match serde_json::from_str(event.payload()) {
+                    Ok(v) => v,
+                    Err(_) => return,
+                };
+                let err_obj = raw.get("error");
+                let code = err_obj.and_then(|e| e.get("code")).and_then(|c| c.as_str());
+                let message = err_obj.and_then(|e| e.get("message")).and_then(|m| m.as_str());
+
+                if code == Some("cancelled") {
+                    emit_state_transition(&app_err, Phase::Cancelled);
+                    let app_idle = app_err.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(Duration::from_millis(500));
+                        emit_state_transition(&app_idle, Phase::Idle);
+                        #[cfg(feature = "recorder-bridge")]
+                        {
+                            use tauri_plugin_recorder::RecorderExt;
+                            let _ = app_idle.recorder().hide_overlay();
+                        }
+                    });
+                } else {
+                    emit_state_transition_with_diagnostic(
+                        &app_err,
+                        Phase::Failed,
+                        message.map(String::from),
+                    );
+                    let app_idle = app_err.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(Duration::from_millis(1500));
+                        emit_state_transition(&app_idle, Phase::Idle);
+                        #[cfg(feature = "recorder-bridge")]
+                        {
+                            use tauri_plugin_recorder::RecorderExt;
+                            let _ = app_idle.recorder().hide_overlay();
+                        }
+                    });
+                }
+            });
+
+            let app_bridge = self.app.clone();
+            let _ = self.app.listen_any(STATE_CHANNEL, move |event| {
+                let raw: serde_json::Value = match serde_json::from_str(event.payload()) {
+                    Ok(v) => v,
+                    Err(_) => return,
+                };
+                if raw.pointer("/state/phase").and_then(|v| v.as_str()) != Some("recording") {
+                    return;
+                }
+                emit_state_transition(&app_bridge, Phase::Listening);
+                let app_cap = app_bridge.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(Duration::from_millis(50));
+                    emit_state_transition(&app_cap, Phase::Capturing);
+                });
+            });
+
             let listener_id = self.app.listen_any(COMPLETE_CHANNEL, move |event| {
                 let payload = event.payload().to_string();
                 let app_for_task = app.clone();
@@ -1654,8 +1965,8 @@ impl<R: Runtime> TauriPluginVoice<R> {
 async fn process_complete_event<R: Runtime>(
     app: AppHandle<R>,
     pipeline_state: Arc<Mutex<PipelineRuntimeState>>,
-    stt: SttEngineState,
-    tts: TtsEngineState,
+    _stt: SttEngineState,
+    _tts: TtsEngineState,
     payload: String,
 ) {
     use tauri_plugin_recorder::RecorderExt;
@@ -1677,12 +1988,8 @@ async fn process_complete_event<R: Runtime>(
 
     emit_state_transition(&app, Phase::Transcribing);
 
-    let service = TauriPluginVoice {
-        app: app.clone(),
-        pipeline_state,
-        stt,
-        tts,
-    };
+    let pipeline_state_arc = pipeline_state.clone();
+    let service = app.state::<TauriPluginVoice<R>>().inner().clone();
     let transcribe_result = service
         .transcribe_file_internal(
             TranscribeRequest {
@@ -1696,29 +2003,75 @@ async fn process_complete_event<R: Runtime>(
     match transcribe_result {
         Ok(response) => {
             println!("Pipeline transcription complete: \"{}\"", response.text);
+
             if config.show_final_transcript {
                 let now = now_ms();
-                let event = LiveEvent {
+                let live_event = LiveEvent {
                     contract_version: CONTRACT_VERSION.to_string(),
                     event_id: format!("live-{}", now),
                     session_id: Some(complete_event.session_id),
                     seq: 0,
                     emitted_at_ms: now,
-                    text: response.text,
+                    text: response.text.clone(),
                 };
-                let _ = app.emit(LIVE_CHANNEL, event);
-
-                // Delay idle transition on a thread to avoid tokio dep
-                let app_handle = app.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(Duration::from_secs(3));
-                    emit_state_transition(&app_handle, Phase::Idle);
-                    let _ = app_handle.recorder().hide_overlay();
-                });
-            } else {
-                emit_state_transition(&app, Phase::Idle);
-                let _ = app.recorder().hide_overlay();
+                let _ = app.emit(LIVE_CHANNEL, live_event);
             }
+
+            // Enter HandedOff; emit handoff event with fresh interactionId.
+            let interaction_id = format!("interaction-{}", now_ms());
+            emit_state_transition(&app, Phase::HandedOff);
+
+            let handoff_event = HandoffEvent {
+                contract_version: CONTRACT_VERSION.to_string(),
+                event_id: format!("handoff-{}", now_ms()),
+                interaction_id: interaction_id.clone(),
+                transcript: response.text,
+                transcribed_at_ms: now_ms(),
+            };
+            let _ = app.emit(HANDOFF_CHANNEL, handoff_event);
+
+            // Store interactionId so the timeout thread can detect superseded calls.
+            {
+                let mut state = pipeline_state_arc.lock().expect("pipeline state mutex poisoned");
+                state.handoff_interaction_id = Some(interaction_id.clone());
+            }
+
+            // Determine timeout duration.
+            let timeout_ms = {
+                let state = pipeline_state_arc.lock().expect("pipeline state mutex poisoned");
+                state.handoff_timeout_ms.unwrap_or(HANDOFF_TIMEOUT_SECS * 1000)
+            };
+
+            // Spawn timeout; returns to Idle if this interaction is still current.
+            let app_handle = app.clone();
+            let pipeline_state_timeout = pipeline_state_arc.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(timeout_ms));
+
+                let still_current = {
+                    let mut state = pipeline_state_timeout
+                        .lock()
+                        .expect("pipeline state mutex poisoned");
+                    if state.handoff_interaction_id.as_deref() == Some(&interaction_id) {
+                        state.handoff_interaction_id = None;
+                        true
+                    } else {
+                        false
+                    }
+                };
+
+                if still_current {
+                    emit_state_transition(&app_handle, Phase::Idle);
+                    let timeout_event = crate::models::HandoffTimeoutEvent {
+                        contract_version: CONTRACT_VERSION.to_string(),
+                        event_id: format!("timeout-{}", now_ms()),
+                        interaction_id: interaction_id.clone(),
+                        emitted_at_ms: now_ms(),
+                    };
+                    let _ = app_handle.emit("voice://handoff_timeout", timeout_event);
+                    let _ = app_handle.recorder().hide_overlay();
+                }
+            });
         }
         Err(err) => {
             eprintln!("Pipeline transcription failed: {:?}", err);
@@ -1741,6 +2094,11 @@ async fn process_complete_event<R: Runtime>(
 
 #[cfg(feature = "recorder-bridge")]
 fn emit_state_transition<R: Runtime>(app: &AppHandle<R>, phase: Phase) {
+    emit_state_transition_with_diagnostic(app, phase, None);
+}
+
+#[cfg(feature = "recorder-bridge")]
+fn emit_state_transition_with_diagnostic<R: Runtime>(app: &AppHandle<R>, phase: Phase, diagnostic: Option<String>) {
     use tauri_plugin_recorder::RecorderExt;
 
     let state_snapshot: Option<GetRuntimeStateResponse> = app
@@ -1776,6 +2134,7 @@ fn emit_state_transition<R: Runtime>(app: &AppHandle<R>, phase: Phase) {
         emitted_at_ms: now_ms(),
         state,
         readiness,
+        diagnostic,
     };
     let _ = app.emit(STATE_CHANNEL, event);
 }

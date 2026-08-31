@@ -22,6 +22,8 @@ Default permissions for the plugin
 - `allow-get-overlay-mode`
 - `allow-stream-speech`
 - `allow-cancel-speech`
+- `allow-start-listening`
+- `allow-respond`
 
 ## Permission Table
 
@@ -243,6 +245,32 @@ Denies the initialize_recorder_runtime command without any pre-configured scope.
 <tr>
 <td>
 
+`voice:allow-respond`
+
+</td>
+<td>
+
+Enables the respond command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`voice:deny-respond`
+
+</td>
+<td>
+
+Denies the respond command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `voice:allow-set-hotkey-bindings`
 
 </td>
@@ -340,6 +368,32 @@ Enables the setup_record_transcribe_pipeline command without any pre-configured 
 <td>
 
 Denies the setup_record_transcribe_pipeline command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`voice:allow-start-listening`
+
+</td>
+<td>
+
+Enables the start_listening command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`voice:deny-start-listening`
+
+</td>
+<td>
+
+Denies the start_listening command without any pre-configured scope.
 
 </td>
 </tr>

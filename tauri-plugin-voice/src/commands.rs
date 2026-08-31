@@ -91,6 +91,23 @@ pub(crate) async fn cancel_speech<R: Runtime>(
 // -----------------------------------------------------------------------------
 
 #[command]
+pub(crate) async fn list_declared_states<R: Runtime>(
+    app: AppHandle<R>,
+) -> Result<ListDeclaredStatesResponse> {
+    app.tauri_plugin_voice().list_declared_states()
+}
+
+#[command]
+pub(crate) async fn register_state<R: Runtime>(
+    _app: AppHandle<R>,
+    _payload: DeclaredState,
+) -> Result<()> {
+    Err(crate::Error::runtime_injection_rejected(
+        "Intermediate states must be declared at initialization. Runtime injection is not supported.",
+    ))
+}
+
+#[command]
 pub(crate) async fn initialize_recorder_runtime<R: Runtime>(
     #[allow(unused_variables)] app: AppHandle<R>,
 ) -> Result<InitializeRuntimeResponse> {
@@ -109,6 +126,22 @@ pub(crate) async fn initialize_recorder_runtime<R: Runtime>(
             "Recorder bridge is disabled",
         ))
     }
+}
+
+#[command]
+pub(crate) async fn start_listening<R: Runtime>(
+    app: AppHandle<R>,
+    payload: StartListeningRequest,
+) -> Result<StartRecordingResponse> {
+    app.tauri_plugin_voice().start_listening(payload).await
+}
+
+#[command]
+pub(crate) async fn respond<R: Runtime>(
+    app: AppHandle<R>,
+    payload: RespondRequest,
+) -> Result<RespondResponse> {
+    app.tauri_plugin_voice().respond(payload).await
 }
 
 #[command]

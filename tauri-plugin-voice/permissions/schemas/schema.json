@@ -391,6 +391,18 @@
           "markdownDescription": "Denies the initialize_recorder_runtime command without any pre-configured scope."
         },
         {
+          "description": "Enables the respond command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-respond",
+          "markdownDescription": "Enables the respond command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the respond command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-respond",
+          "markdownDescription": "Denies the respond command without any pre-configured scope."
+        },
+        {
           "description": "Enables the set_hotkey_bindings command without any pre-configured scope.",
           "type": "string",
           "const": "allow-set-hotkey-bindings",
@@ -437,6 +449,18 @@
           "type": "string",
           "const": "deny-setup-record-transcribe-pipeline",
           "markdownDescription": "Denies the setup_record_transcribe_pipeline command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the start_listening command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-start-listening",
+          "markdownDescription": "Enables the start_listening command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the start_listening command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-start-listening",
+          "markdownDescription": "Denies the start_listening command without any pre-configured scope."
         },
         {
           "description": "Enables the start_recording command without any pre-configured scope.",
@@ -511,10 +535,10 @@
           "markdownDescription": "Denies the voice_health command without any pre-configured scope."
         },
         {
-          "description": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-bootstrap-voice`\n- `allow-download-model`\n- `allow-transcribe-file`\n- `allow-synthesize-speech`\n- `allow-voice-health`\n- `allow-setup-record-transcribe-pipeline`\n- `allow-initialize-recorder-runtime`\n- `allow-start-recording`\n- `allow-stop-recording`\n- `allow-set-hotkey-bindings`\n- `allow-capture-hotkey`\n- `allow-get-runtime-state`\n- `allow-set-output-destination`\n- `allow-get-output-destination`\n- `allow-set-overlay-mode`\n- `allow-get-overlay-mode`\n- `allow-stream-speech`\n- `allow-cancel-speech`",
+          "description": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-bootstrap-voice`\n- `allow-download-model`\n- `allow-transcribe-file`\n- `allow-synthesize-speech`\n- `allow-voice-health`\n- `allow-setup-record-transcribe-pipeline`\n- `allow-initialize-recorder-runtime`\n- `allow-start-recording`\n- `allow-stop-recording`\n- `allow-set-hotkey-bindings`\n- `allow-capture-hotkey`\n- `allow-get-runtime-state`\n- `allow-set-output-destination`\n- `allow-get-output-destination`\n- `allow-set-overlay-mode`\n- `allow-get-overlay-mode`\n- `allow-stream-speech`\n- `allow-cancel-speech`\n- `allow-start-listening`\n- `allow-respond`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-bootstrap-voice`\n- `allow-download-model`\n- `allow-transcribe-file`\n- `allow-synthesize-speech`\n- `allow-voice-health`\n- `allow-setup-record-transcribe-pipeline`\n- `allow-initialize-recorder-runtime`\n- `allow-start-recording`\n- `allow-stop-recording`\n- `allow-set-hotkey-bindings`\n- `allow-capture-hotkey`\n- `allow-get-runtime-state`\n- `allow-set-output-destination`\n- `allow-get-output-destination`\n- `allow-set-overlay-mode`\n- `allow-get-overlay-mode`\n- `allow-stream-speech`\n- `allow-cancel-speech`"
+          "markdownDescription": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-bootstrap-voice`\n- `allow-download-model`\n- `allow-transcribe-file`\n- `allow-synthesize-speech`\n- `allow-voice-health`\n- `allow-setup-record-transcribe-pipeline`\n- `allow-initialize-recorder-runtime`\n- `allow-start-recording`\n- `allow-stop-recording`\n- `allow-set-hotkey-bindings`\n- `allow-capture-hotkey`\n- `allow-get-runtime-state`\n- `allow-set-output-destination`\n- `allow-get-output-destination`\n- `allow-set-overlay-mode`\n- `allow-get-overlay-mode`\n- `allow-stream-speech`\n- `allow-cancel-speech`\n- `allow-start-listening`\n- `allow-respond`"
         }
       ]
     }

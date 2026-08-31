@@ -44,6 +44,14 @@ html.overlay-body body {
   border-color: #44cc66;
 }
 
+.overlay-indicator.is-handed-off {
+  border-color: #9b59b6;
+}
+
+.overlay-indicator.is-speaking {
+  border-color: #1abc9c;
+}
+
 /* Phase dot. */
 .overlay-dot {
   width: 10px;
@@ -64,6 +72,16 @@ html.overlay-body body {
 
 .overlay-dot.is-done {
   background: #44cc66;
+}
+
+.overlay-dot.is-handed-off {
+  background: #9b59b6;
+  animation: overlay-blink 2s infinite;
+}
+
+.overlay-dot.is-speaking {
+  background: #1abc9c;
+  animation: overlay-blink 0.8s infinite;
 }
 
 /* Text stack: label + optional preview. */

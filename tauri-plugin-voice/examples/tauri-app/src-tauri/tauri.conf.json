@@ -24,6 +24,18 @@
         "resizable": true,
         "title": "tauri-app",
         "width": 800
+      },
+      {
+        "label": "overlay",
+        "title": "Voice Overlay",
+        "url": "/#overlay",
+        "width": 300,
+        "height": 100,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "visible": false,
+        "skipTaskbar": true
       }
     ]
   },
@@ -41,7 +53,13 @@
   },
   "plugins": {
     "voice": {
-      "modelId": "tiny.en"
+      "modelId": "tiny.en",
+      "declaredStates": [
+        {
+          "name": "Thinking",
+          "timeoutMs": 3000
+        }
+      ]
     }
   }
 }

@@ -2,21 +2,25 @@
 
 ## 1. Objective
 
-Translate the locked scope and HLD into atomic slices that are individually testable in `tauri-plugin-voice/examples/tauri-app`. Each slice produces a visible or interactive change that can be validated without waiting for downstream slices.
+Translate the locked scope and HLD into implementation phases that are individually testable in `tauri-plugin-voice/examples/tauri-app`. Each phase produces visible, interactive changes that can be validated before the next phase begins.
 
-## 2. Phasing
+## 2. Tracked work units (Plane sub-tasks of CODIN-400)
 
-- **Phase 1 — Plumbing** (Slices 1–3): make plugin state externally observable.
-- **Phase 2 — Handoff Contract** (Slices 4–7): introduce HandedOff state and the handoff event.
-- **Phase 3 — Return Command** (Slices 8–13): wire `respond` with `continue` and `speak` directives, plus timeout.
-- **Phase 4 — Overlay Injection Demo** (Slices 14–19): host-declared intermediate states with custom React component rendering. This phase delivers the headline reusability story.
-- **Phase 5 — Edge Cases** (Slices 20–22): cancellation, failure, re-engagement parity.
+Each phase below corresponds to a Plane sub-task. **Phases are the tracked implementation unit** — individual slices within a phase are implementation steps, not separately tracked items.
 
-Implement slices in order. Each one is independently shippable to the example app for validation before the next begins.
+| Phase | Plane ticket | Slices |
+|-------|-------------|--------|
+| Phase 1 — Plumbing | CODIN-423 | 1–3 |
+| Phase 2 — Handoff Contract | CODIN-424 | 4–7 |
+| Phase 3 — Return Command | CODIN-425 | 8–13 |
+| Phase 4 — Overlay Injection Demo | CODIN-426 | 14–19 |
+| Phase 5 — Edge Cases | CODIN-427 | 20–22 |
+
+Implement phases in order. Each phase must pass all its example-app validations before the next phase begins.
 
 ---
 
-## Phase 1 — Plumbing
+## Phase 1 — Plumbing (CODIN-423)
 
 ### 3. Slice 1: Canonical state names
 
@@ -56,7 +60,7 @@ Validation:
 
 ---
 
-## Phase 2 — Handoff Contract
+## Phase 2 — Handoff Contract (CODIN-424)
 
 ### 6. Slice 4: HandedOff state in the plugin
 
@@ -111,7 +115,7 @@ Validation:
 
 ---
 
-## Phase 3 — Return Command
+## Phase 3 — Return Command (CODIN-425)
 
 ### 10. Slice 8: `respond` with `continue: false`
 
@@ -197,7 +201,7 @@ Validation:
 
 ---
 
-## Phase 4 — Overlay Injection Demo
+## Phase 4 — Overlay Injection Demo (CODIN-426)
 
 ### 16. Slice 14: Declared intermediate states at init
 
@@ -283,7 +287,7 @@ Validation:
 
 ---
 
-## Phase 5 — Edge Cases
+## Phase 5 — Edge Cases (CODIN-427)
 
 ### 22. Slice 20: Cancelled state
 
